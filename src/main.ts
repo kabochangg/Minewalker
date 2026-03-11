@@ -14,16 +14,16 @@ app.appendChild(gameWrap);
 const game = new Phaser.Game({
   type: Phaser.AUTO,
   parent: 'game-wrap',
-  width: 420,
-  height: 800,
+  width: Math.min(window.innerWidth, 430),
+  height: window.innerHeight,
   backgroundColor: '#11131a',
   scale: {
-    mode: Phaser.Scale.FIT,
+    mode: Phaser.Scale.RESIZE,
     autoCenter: Phaser.Scale.CENTER_BOTH
   },
   scene: [GameScene]
 });
 
 window.addEventListener('resize', () => {
-  game.scale.refresh();
+  game.scale.resize(Math.min(window.innerWidth, 430), window.innerHeight);
 });
