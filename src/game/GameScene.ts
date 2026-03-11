@@ -1,18 +1,18 @@
 import Phaser from 'phaser';
 
-type CellKind = 'safe' | 'mine' | 'ore' | 'heal' | 'core';
-
 interface Cell {
-  hidden: boolean;
-  flagged: boolean;
+  isMine: boolean;
   revealed: boolean;
-  kind: CellKind;
+  flagged: boolean;
   adjacentMines: number;
 }
 
 const GRID_W = 10;
 const GRID_H = 14;
-const LONG_PRESS_MS = 420;
+const TOTAL_MINES = 24;
+const LONG_PRESS_MS = 320;
+
+const NUMBER_COLORS = ['#d5deff', '#4fc3f7', '#6ee7b7', '#facc15', '#fb7185', '#f97316', '#a78bfa', '#f472b6', '#ffffff'];
 
 const NUMBER_COLORS: Record<number, string> = {
   1: '#7ec8ff',
@@ -29,20 +29,7 @@ export class GameScene extends Phaser.Scene {
   private grid: Cell[][] = [];
   private cellBg: Phaser.GameObjects.Rectangle[][] = [];
   private cellText: Phaser.GameObjects.Text[][] = [];
-
-  private hp = 12;
-  private ore = 0;
-  private pickaxePower = 1;
-  private turn = 0;
-  private gameEnded = false;
-  private flagMode = false;
-
-  private hpText!: Phaser.GameObjects.Text;
-  private oreText!: Phaser.GameObjects.Text;
-  private pickaxeText!: Phaser.GameObjects.Text;
-  private turnText!: Phaser.GameObjects.Text;
-  private logText!: Phaser.GameObjects.Text;
-  private flagModeText!: Phaser.GameObjects.Text;
+  private cellZones: Phaser.GameObjects.Zone[][] = [];
 
   private boardX = 0;
   private boardY = 0;
@@ -52,7 +39,12 @@ export class GameScene extends Phaser.Scene {
   private topPanelH = 0;
   private bottomPanelH = 0;
 
-  private logLines: string[] = [];
+  private timerText!: Phaser.GameObjects.Text;
+  private mineCounterText!: Phaser.GameObjects.Text;
+  private statusText!: Phaser.GameObjects.Text;
+  private helpText!: Phaser.GameObjects.Text;
+  private flagModeLabel!: Phaser.GameObjects.Text;
+  private flagModeBtn!: Phaser.GameObjects.Rectangle;
 
   constructor() {
     super('GameScene');
@@ -64,12 +56,14 @@ export class GameScene extends Phaser.Scene {
     this.drawFrames();
     this.addTopUi();
     this.addBottomUi();
+    this.cameras.main.setBackgroundColor('#0e1320');
+    this.layoutBoard();
+    this.createUi();
     this.newRun();
 
     this.scale.on('resize', () => {
       this.scene.restart();
     });
-  }
 
   private computeLayout(): void {
     const w = this.scale.gameSize.width;
@@ -93,8 +87,21 @@ export class GameScene extends Phaser.Scene {
     this.panelWidth = Math.min(w - horizontalPadding * 2, boardWidth + 16);
   }
 
-  private drawFrames(): void {
-    const w = this.scale.gameSize.width;
+  private layoutBoard(): void {
+    const width = this.scale.width;
+    const height = this.scale.height;
+    const sidePadding = 12;
+    const topArea = 112;
+    const bottomArea = 190;
+
+    const byWidth = (width - sidePadding * 2) / GRID_W;
+    const byHeight = (height - topArea - bottomArea) / GRID_H;
+    this.cellSize = Math.max(22, Math.floor(Math.min(byWidth, byHeight)));
+
+    const boardPixelW = this.cellSize * GRID_W;
+    const boardPixelH = this.cellSize * GRID_H;
+    this.boardX = Math.floor((width - boardPixelW) / 2);
+    this.boardY = topArea;
 
     this.add
       .rectangle(w / 2, this.topPanelH / 2, this.panelWidth, this.topPanelH - 4, 0x101723)
@@ -209,27 +216,29 @@ export class GameScene extends Phaser.Scene {
 
   private newRun(): void {
     this.gameEnded = false;
+    this.firstOpenDone = false;
+    this.startedAt = this.time.now;
+    this.elapsedSec = 0;
     this.flagMode = false;
-    this.hp = 12;
-    this.ore = 0;
-    this.pickaxePower = 1;
-    this.turn = 0;
-    this.logLines = [];
 
     this.grid = this.buildGrid();
     this.computeAdjacency();
 
-    this.cellBg.flat().forEach((r) => r.destroy());
-    this.cellText.flat().forEach((t) => t.destroy());
+    this.cellBg.flat().forEach((x) => x.destroy());
+    this.cellText.flat().forEach((x) => x.destroy());
+    this.cellZones.flat().forEach((x) => x.destroy());
     this.cellBg = [];
     this.cellText = [];
+    this.cellZones = [];
 
     for (let y = 0; y < GRID_H; y += 1) {
       this.cellBg[y] = [];
       this.cellText[y] = [];
+      this.cellZones[y] = [];
       for (let x = 0; x < GRID_W; x += 1) {
         const px = this.boardX + x * this.cellSize;
         const py = this.boardY + y * this.cellSize;
+
         const rect = this.add
           .rectangle(px, py, this.cellSize - 1, this.cellSize - 1, 0x3a4457)
           .setOrigin(0)
@@ -247,6 +256,7 @@ export class GameScene extends Phaser.Scene {
 
         this.cellBg[y][x] = rect;
         this.cellText[y][x] = txt;
+        this.cellZones[y][x] = zone;
       }
     }
 
@@ -262,40 +272,37 @@ export class GameScene extends Phaser.Scene {
 
   private bindCellPointer(zone: Phaser.GameObjects.Zone, x: number, y: number): void {
     zone.setInteractive();
-    let downAt = 0;
+    let longPressHandled = false;
+    let longPressTimer: Phaser.Time.TimerEvent | null = null;
 
     zone.on('pointerdown', () => {
-      downAt = this.time.now;
+      if (this.gameEnded) return;
+      longPressHandled = false;
+      longPressTimer = this.time.delayedCall(LONG_PRESS_MS, () => {
+        if (this.gameEnded) return;
+        longPressHandled = true;
+        this.toggleFlag(x, y);
+      });
     });
 
     zone.on('pointerup', () => {
-      if (this.gameEnded) return;
-      const held = this.time.now - downAt;
-      if (held >= LONG_PRESS_MS) {
-        this.toggleFlag(x, y);
-      } else {
-        this.onCellTap(x, y);
+      if (longPressTimer) {
+        longPressTimer.remove(false);
+        longPressTimer = null;
+      }
+      if (this.gameEnded || longPressHandled) return;
+      this.handleTap(x, y);
+    });
+
+    zone.on('pointerout', () => {
+      if (longPressTimer) {
+        longPressTimer.remove(false);
+        longPressTimer = null;
       }
     });
   }
 
-  private onCellTap(x: number, y: number): void {
-    const target = this.grid[y][x];
-
-    if (target.revealed) {
-      this.tryChord(x, y);
-      return;
-    }
-
-    if (this.flagMode) {
-      this.toggleFlag(x, y);
-      return;
-    }
-
-    this.mineAction(x, y);
-  }
-
-  private tryChord(x: number, y: number): void {
+  private handleTap(x: number, y: number): void {
     const cell = this.grid[y][x];
     if (!cell.revealed || cell.adjacentMines <= 0) return;
 
@@ -322,58 +329,35 @@ export class GameScene extends Phaser.Scene {
   }
 
   private buildGrid(): Cell[][] {
-    const grid: Cell[][] = [];
+    const out: Cell[][] = [];
     for (let y = 0; y < GRID_H; y += 1) {
-      grid[y] = [];
+      out[y] = [];
       for (let x = 0; x < GRID_W; x += 1) {
-        grid[y][x] = {
-          hidden: true,
-          flagged: false,
+        out[y][x] = {
+          isMine: false,
           revealed: false,
-          kind: this.rollKind(),
+          flagged: false,
           adjacentMines: 0
         };
       }
     }
 
-    const cx = Math.floor(GRID_W / 2);
-    const cy = Math.floor(GRID_H / 2);
-    grid[cy][cx] = {
-      hidden: false,
-      flagged: false,
-      revealed: true,
-      kind: 'safe',
-      adjacentMines: 0
-    };
-
-    for (const [nx, ny] of this.neighbors(cx, cy)) {
-      if (grid[ny][nx].kind === 'mine' || grid[ny][nx].kind === 'core') {
-        grid[ny][nx].kind = 'safe';
-      }
+    let placed = 0;
+    while (placed < TOTAL_MINES) {
+      const x = Phaser.Math.Between(0, GRID_W - 1);
+      const y = Phaser.Math.Between(0, GRID_H - 1);
+      if (out[y][x].isMine) continue;
+      out[y][x].isMine = true;
+      placed += 1;
     }
 
-    const coreX = Phaser.Math.Between(0, GRID_W - 1);
-    const coreY = Phaser.Math.Between(0, GRID_H - 1);
-    if (coreX !== cx || coreY !== cy) {
-      grid[coreY][coreX].kind = 'core';
-    }
-
-    return grid;
-  }
-
-  private rollKind(): CellKind {
-    const r = Math.random();
-    if (r < 0.14) return 'mine';
-    if (r < 0.24) return 'ore';
-    if (r < 0.3) return 'heal';
-    return 'safe';
+    return out;
   }
 
   private computeAdjacency(): void {
     for (let y = 0; y < GRID_H; y += 1) {
       for (let x = 0; x < GRID_W; x += 1) {
-        const c = this.grid[y][x];
-        c.adjacentMines = this.neighbors(x, y).filter(([nx, ny]) => this.grid[ny][nx].kind === 'mine').length;
+        this.grid[y][x].adjacentMines = this.neighbors(x, y).filter(([nx, ny]) => this.grid[ny][nx].isMine).length;
       }
     }
   }
@@ -385,46 +369,29 @@ export class GameScene extends Phaser.Scene {
     this.redrawCell(x, y);
   }
 
-  private mineAction(x: number, y: number): void {
-    const target = this.grid[y][x];
-    if (!target.hidden || target.flagged) return;
-
-    const adjacentRevealed = this.neighbors(x, y).some(([nx, ny]) => this.grid[ny][nx].revealed);
-    if (!adjacentRevealed) {
-      this.pushLog('隣接する壁しか壊せない。');
-      return;
-    }
-
-    this.turn += 1;
-
-    if (this.pickaxePower >= 2) {
-      for (let dy = -1; dy <= 1; dy += 1) {
-        for (let dx = -1; dx <= 1; dx += 1) {
-          if (Math.abs(dx) + Math.abs(dy) > 1) continue;
-          const tx = x + dx;
-          const ty = y + dy;
-          if (!this.inRange(tx, ty)) continue;
-          if (!this.grid[ty][tx].hidden || this.grid[ty][tx].flagged) continue;
-          this.revealCell(tx, ty);
+    this.grid[y][x].isMine = false;
+    for (let yy = 0; yy < GRID_H; yy += 1) {
+      for (let xx = 0; xx < GRID_W; xx += 1) {
+        if (!this.grid[yy][xx].isMine && (xx !== x || yy !== y)) {
+          this.grid[yy][xx].isMine = true;
+          this.computeAdjacency();
+          return;
         }
       }
-    } else {
-      this.revealCell(x, y);
     }
 
     this.refreshUi();
     this.checkEndState();
   }
 
-  private revealCell(x: number, y: number, forceSafe = false): void {
-    const cell = this.grid[y][x];
-    if (!cell.hidden || cell.flagged) return;
+  private openCell(x: number, y: number): void {
+    const target = this.grid[y][x];
+    if (target.flagged || target.revealed || this.gameEnded) return;
 
-    cell.hidden = false;
-    cell.revealed = true;
-
-    if (forceSafe) {
-      cell.kind = 'safe';
+    if (!this.firstOpenDone) {
+      this.ensureFirstTapSafe(x, y);
+      this.startedAt = this.time.now;
+      this.firstOpenDone = true;
     }
 
     if (cell.kind === 'mine') {
@@ -434,15 +401,13 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    if (cell.kind === 'ore') {
-      this.ore += 1;
-      this.pushLog('⛏️ 鉱石を入手 +1');
+    if (target.adjacentMines === 0) {
+      this.expandZeroes(x, y);
     }
 
-    if (cell.kind === 'heal') {
-      this.hp = Math.min(12, this.hp + 2);
-      this.pushLog('🧪 回復 +2');
-    }
+    this.redrawAll();
+    this.checkWin();
+  }
 
     if (cell.kind === 'core') {
       this.pushLog('🌟 Coreを発見! クリア!');
@@ -470,9 +435,6 @@ export class GameScene extends Phaser.Scene {
       if (seen.has(key)) continue;
       seen.add(key);
 
-      const cell = this.grid[y][x];
-      if (cell.kind !== 'safe' || cell.adjacentMines !== 0) continue;
-
       for (const [nx, ny] of this.neighbors(x, y)) {
         const n = this.grid[ny][nx];
         if (n.hidden && !n.flagged && n.kind !== 'mine' && n.kind !== 'core') {
@@ -489,12 +451,33 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private checkEndState(): void {
-    if (this.hp <= 0) {
-      this.hp = 0;
-      this.gameEnded = true;
-      this.pushLog('☠️ HPが尽きた。ゲームオーバー');
+  private checkWin(): void {
+    let opened = 0;
+    for (let y = 0; y < GRID_H; y += 1) {
+      for (let x = 0; x < GRID_W; x += 1) {
+        if (this.grid[y][x].revealed) opened += 1;
+      }
     }
+
+    if (opened === GRID_W * GRID_H - TOTAL_MINES) {
+      this.gameEnded = true;
+      this.statusText.setText('🏁 CLEAR!');
+    }
+  }
+
+  private revealAllMines(): void {
+    for (let y = 0; y < GRID_H; y += 1) {
+      for (let x = 0; x < GRID_W; x += 1) {
+        if (this.grid[y][x].isMine) {
+          this.grid[y][x].revealed = true;
+        }
+      }
+    }
+  }
+
+  private refreshMinesLeft(): void {
+    const flags = this.grid.flat().filter((c) => c.flagged).length;
+    this.minesLeft = TOTAL_MINES - flags;
   }
 
   private refreshUi(): void {
@@ -523,6 +506,7 @@ export class GameScene extends Phaser.Scene {
       bg.setFillStyle(cell.flagged ? 0x374c73 : 0x3a4457);
       txt.setColor('#ffffff');
       txt.setText(cell.flagged ? '🚩' : '');
+      txt.setColor('#fef08a');
       return;
     }
 
@@ -554,11 +538,14 @@ export class GameScene extends Phaser.Scene {
         txt.setText(cell.adjacentMines > 0 ? String(cell.adjacentMines) : '');
         break;
     }
-  }
 
-  private pushLog(message: string): void {
-    this.logLines.push(`[${this.turn}] ${message}`);
-    this.refreshUi();
+    bg.setFillStyle(0x1f2c44);
+    if (cell.adjacentMines > 0) {
+      txt.setText(String(cell.adjacentMines));
+      txt.setColor(NUMBER_COLORS[cell.adjacentMines]);
+    } else {
+      txt.setText('');
+    }
   }
 
   private neighbors(x: number, y: number): Array<[number, number]> {

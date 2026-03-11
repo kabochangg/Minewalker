@@ -20,7 +20,7 @@ const game = new Phaser.Game({
   height: getViewportHeight(),
   backgroundColor: '#11131a',
   scale: {
-    mode: Phaser.Scale.RESIZE,
+    mode: Phaser.Scale.NONE,
     autoCenter: Phaser.Scale.CENTER_BOTH
   },
   scene: [GameScene]
