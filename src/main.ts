@@ -11,20 +11,14 @@ const gameWrap = document.createElement('div');
 gameWrap.id = 'game-wrap';
 app.appendChild(gameWrap);
 
-const getSize = () => {
-  const w = Math.min(window.innerWidth - 12, 440);
-  const h = Math.min(window.innerHeight - 12, 920);
-  return {
-    width: Math.max(320, Math.floor(w)),
-    height: Math.max(560, Math.floor(h))
-  };
-};
+const getViewportHeight = () => Math.floor(window.visualViewport?.height ?? window.innerHeight);
 
 const game = new Phaser.Game({
   type: Phaser.AUTO,
   parent: 'game-wrap',
-  ...getSize(),
-  backgroundColor: '#0b1020',
+  width: Math.min(window.innerWidth, 430),
+  height: getViewportHeight(),
+  backgroundColor: '#11131a',
   scale: {
     mode: Phaser.Scale.NONE,
     autoCenter: Phaser.Scale.CENTER_BOTH
@@ -32,7 +26,9 @@ const game = new Phaser.Game({
   scene: [GameScene]
 });
 
-window.addEventListener('resize', () => {
-  const next = getSize();
-  game.scale.resize(next.width, next.height);
-});
+const resizeGame = () => {
+  game.scale.resize(Math.min(window.innerWidth, 430), getViewportHeight());
+};
+
+window.addEventListener('resize', resizeGame);
+window.visualViewport?.addEventListener('resize', resizeGame);
