@@ -1,48 +1,21 @@
-# Minewalker MVP (Phaser 3 + TypeScript + Vite)
+# Minewalker MVP（単一HTML版）
 
-スマホ縦画面向けの「マインスイーパー × 拠点拡張RPG」MVPです。
+iPhone の Safari で `index.html` を直接開くだけで遊べるようにした版です。
+Node.js / npm は不要です。
 
-## ディレクトリ構成
+## 遊び方
 
-```txt
-.
-├─ index.html
-├─ package.json
-├─ tsconfig.json
-└─ src
-   ├─ main.ts
-   ├─ styles.css
-   └─ game
-      └─ GameScene.ts
-```
+1. `index.html` を iPhone にコピー
+2. Safari で開く
+3. タップでマスを掘る
+4. 長押し（約0.42秒）で旗を立てる
 
-## セットアップ & 実行
-
-```bash
-npm install
-npm run dev
-```
-
-## ビルド
-
-```bash
-npm run build
-```
-
-## MVP仕様
+## ルール
 
 - 中央開始の安全地帯から、隣接する壁だけ破壊可能
 - 壁の中身: safe / mine / ore / heal / core
 - safe は周辺8マス地雷数を表示、0なら自動展開
 - mine でHP減少、oreで資源増、healで回復
-- 長押しでフラグ
 - HP 0でゲームオーバー
 - core発見でクリア
 - UI: 上部ステータス / 中央盤面 / 下部ログ + 強化 + リスタート
-
-## 拡張案
-
-- シード固定のダンジョン生成
-- 敵ユニット・拠点設備・クラフト要素
-- 永続成長(メタ進行)とステージ制
-- 端末バイブレーション / 効果音 / 画面演出
