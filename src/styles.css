@@ -1,12 +1,13 @@
 :root {
   font-family: 'Noto Sans JP', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   color: #f2f5ff;
-  background-color: #0f131d;
+  background-color: #080d18;
 }
 
 * {
   box-sizing: border-box;
   -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
 }
 
 html,
@@ -15,22 +16,32 @@ body,
   margin: 0;
   width: 100%;
   min-height: 100%;
-  background: linear-gradient(180deg, #101522 0%, #0b0f16 100%);
+  background: linear-gradient(180deg, #0b1324 0%, #060a14 100%);
 }
 
 body {
   display: flex;
   justify-content: center;
   align-items: flex-start;
-  padding: 10px;
+  overflow: hidden;
+}
+
+#app {
+  display: flex;
+  justify-content: center;
+  width: 100%;
 }
 
 #game-wrap {
-  width: min(100vw - 20px, 420px);
-  max-height: 95vh;
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 6px;
 }
 
 canvas {
-  border-radius: 12px;
+  border-radius: 14px;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
 }
