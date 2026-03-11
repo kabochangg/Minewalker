@@ -12,9 +12,6 @@ interface Cell {
 
 const GRID_W = 10;
 const GRID_H = 14;
-const CELL = 36;
-const BOARD_X = 30;
-const BOARD_Y = 120;
 const LONG_PRESS_MS = 420;
 
 export class GameScene extends Phaser.Scene {
@@ -27,12 +24,20 @@ export class GameScene extends Phaser.Scene {
   private pickaxePower = 1;
   private turn = 0;
   private gameEnded = false;
+  private flagMode = false;
 
   private hpText!: Phaser.GameObjects.Text;
   private oreText!: Phaser.GameObjects.Text;
   private pickaxeText!: Phaser.GameObjects.Text;
   private turnText!: Phaser.GameObjects.Text;
   private logText!: Phaser.GameObjects.Text;
+  private flagModeText!: Phaser.GameObjects.Text;
+
+  private boardX = 0;
+  private boardY = 0;
+  private cellSize = 32;
+  private bottomY = 0;
+  private panelWidth = 0;
 
   private logLines: string[] = [];
 
@@ -42,40 +47,96 @@ export class GameScene extends Phaser.Scene {
 
   create(): void {
     this.cameras.main.setBackgroundColor('#12151f');
+    this.computeLayout();
     this.drawFrames();
     this.addTopUi();
     this.addBottomUi();
     this.newRun();
+
+    this.scale.on('resize', () => {
+      this.scene.restart();
+    });
+  }
+
+  private computeLayout(): void {
+    const w = this.scale.gameSize.width;
+    const h = this.scale.gameSize.height;
+    const horizontalPadding = 12;
+    const topPanelH = 100;
+    const bottomPanelH = 220;
+    const gap = 10;
+
+    const maxBoardW = w - horizontalPadding * 2 - 12;
+    const maxBoardH = h - topPanelH - bottomPanelH - gap * 3;
+    this.cellSize = Math.max(24, Math.floor(Math.min(maxBoardW / GRID_W, maxBoardH / GRID_H)));
+
+    const boardWidth = this.cellSize * GRID_W;
+    const boardHeight = this.cellSize * GRID_H;
+
+    this.boardX = Math.floor((w - boardWidth) / 2);
+    this.boardY = topPanelH + gap;
+    this.bottomY = this.boardY + boardHeight + gap;
+    this.panelWidth = Math.min(w - horizontalPadding * 2, boardWidth + 20);
   }
 
   private drawFrames(): void {
-    this.add.rectangle(210, 58, 392, 92, 0x1d2433).setStrokeStyle(2, 0x3a4761);
+    const w = this.scale.gameSize.width;
+
     this.add
-      .rectangle(210, 380, GRID_W * CELL + 12, GRID_H * CELL + 12, 0x1b2330)
+      .rectangle(w / 2, 50, this.panelWidth, 92, 0x1d2433)
       .setStrokeStyle(2, 0x3a4761);
-    this.add.rectangle(210, 700, 392, 192, 0x1d2433).setStrokeStyle(2, 0x3a4761);
+
+    this.add
+      .rectangle(
+        w / 2,
+        this.boardY + (GRID_H * this.cellSize) / 2,
+        GRID_W * this.cellSize + 12,
+        GRID_H * this.cellSize + 12,
+        0x1b2330
+      )
+      .setStrokeStyle(2, 0x3a4761);
+
+    this.add
+      .rectangle(w / 2, this.bottomY + 104, this.panelWidth, 206, 0x1d2433)
+      .setStrokeStyle(2, 0x3a4761);
   }
 
   private addTopUi(): void {
+    const left = Math.floor((this.scale.gameSize.width - this.panelWidth) / 2) + 12;
     const style: Phaser.Types.GameObjects.Text.TextStyle = {
       color: '#e8ecff',
-      fontSize: '18px',
+      fontSize: '17px',
       fontStyle: 'bold'
     };
-    this.hpText = this.add.text(28, 24, '', style);
-    this.oreText = this.add.text(120, 24, '', style);
-    this.pickaxeText = this.add.text(220, 24, '', style);
-    this.turnText = this.add.text(28, 54, '', style);
+
+    this.hpText = this.add.text(left, 18, '', style);
+    this.oreText = this.add.text(left + 92, 18, '', style);
+    this.pickaxeText = this.add.text(left + 176, 18, '', style);
+    this.turnText = this.add.text(left, 44, '', style);
+
+    this.add.text(left, 68, 'タップ: 掘る / 長押し: 🚩 / 数字タップ: Chord', {
+      color: '#c8d2ef',
+      fontSize: '12px'
+    });
   }
 
   private addBottomUi(): void {
-    this.logText = this.add.text(24, 620, '', {
+    const left = Math.floor((this.scale.gameSize.width - this.panelWidth) / 2) + 12;
+    const buttonGap = 8;
+    const buttonWidth = Math.floor((this.panelWidth - 24 - buttonGap * 2) / 3);
+
+    this.logText = this.add.text(left, this.bottomY + 14, '', {
       color: '#cbd5ff',
-      fontSize: '14px',
-      wordWrap: { width: 372 }
+      fontSize: '13px',
+      wordWrap: { width: this.panelWidth - 24 }
     });
 
-    const upgradeBtn = this.makeButton(24, 764, 176, 48, '強化 (Ore 3)', () => {
+    this.add.text(left, this.bottomY + 118, '凡例: 💣地雷 / ⛏鉱石 / ❤回復 / ★コア / 🚩旗', {
+      color: '#9db2da',
+      fontSize: '12px'
+    });
+
+    const upgradeBtn = this.makeButton(left, this.bottomY + 146, buttonWidth, 44, '強化 Ore3', () => {
       if (this.gameEnded) return;
       if (this.ore < 3) {
         this.pushLog('Oreが足りない…');
@@ -87,11 +148,17 @@ export class GameScene extends Phaser.Scene {
       this.refreshUi();
     });
 
-    const restartBtn = this.makeButton(220, 764, 176, 48, 'リスタート', () => {
+    const flagBtn = this.makeButton(left + buttonWidth + buttonGap, this.bottomY + 146, buttonWidth, 44, '', () => {
+      this.flagMode = !this.flagMode;
+      this.refreshUi();
+    });
+    this.flagModeText = flagBtn.list[1] as Phaser.GameObjects.Text;
+
+    const restartBtn = this.makeButton(left + (buttonWidth + buttonGap) * 2, this.bottomY + 146, buttonWidth, 44, 'リスタート', () => {
       this.newRun();
     });
 
-    [upgradeBtn, restartBtn].forEach((btn) => btn.setDepth(5));
+    [upgradeBtn, flagBtn, restartBtn].forEach((btn) => btn.setDepth(5));
   }
 
   private makeButton(
@@ -107,7 +174,7 @@ export class GameScene extends Phaser.Scene {
       .setOrigin(0)
       .setStrokeStyle(2, 0x7082ad);
     const text = this.add
-      .text(w / 2, h / 2, label, { color: '#ffffff', fontSize: '16px' })
+      .text(w / 2, h / 2, label, { color: '#ffffff', fontSize: '14px' })
       .setOrigin(0.5);
     const c = this.add.container(x, y, [box, text]);
     box.setInteractive({ useHandCursor: true }).on('pointerdown', () => {
@@ -123,6 +190,7 @@ export class GameScene extends Phaser.Scene {
 
   private newRun(): void {
     this.gameEnded = false;
+    this.flagMode = false;
     this.hp = 12;
     this.ore = 0;
     this.pickaxePower = 1;
@@ -141,21 +209,21 @@ export class GameScene extends Phaser.Scene {
       this.cellBg[y] = [];
       this.cellText[y] = [];
       for (let x = 0; x < GRID_W; x += 1) {
-        const px = BOARD_X + x * CELL;
-        const py = BOARD_Y + y * CELL;
+        const px = this.boardX + x * this.cellSize;
+        const py = this.boardY + y * this.cellSize;
         const rect = this.add
-          .rectangle(px, py, CELL - 2, CELL - 2, 0x4f4f57)
+          .rectangle(px, py, this.cellSize - 2, this.cellSize - 2, 0x4f4f57)
           .setOrigin(0)
           .setStrokeStyle(1, 0x191923);
         const txt = this.add
-          .text(px + CELL / 2, py + CELL / 2, '', {
+          .text(px + this.cellSize / 2, py + this.cellSize / 2, '', {
             color: '#f3f5ff',
-            fontSize: '16px',
+            fontSize: this.cellSize >= 32 ? '16px' : '14px',
             fontStyle: 'bold'
           })
           .setOrigin(0.5);
 
-        const zone = this.add.zone(px, py, CELL - 2, CELL - 2).setOrigin(0);
+        const zone = this.add.zone(px, py, this.cellSize - 2, this.cellSize - 2).setOrigin(0);
         this.bindCellPointer(zone, x, y);
 
         this.cellBg[y][x] = rect;
@@ -187,9 +255,49 @@ export class GameScene extends Phaser.Scene {
       if (held >= LONG_PRESS_MS) {
         this.toggleFlag(x, y);
       } else {
-        this.mineAction(x, y);
+        this.onCellTap(x, y);
       }
     });
+  }
+
+  private onCellTap(x: number, y: number): void {
+    const target = this.grid[y][x];
+
+    if (target.revealed) {
+      this.tryChord(x, y);
+      return;
+    }
+
+    if (this.flagMode) {
+      this.toggleFlag(x, y);
+      return;
+    }
+
+    this.mineAction(x, y);
+  }
+
+  private tryChord(x: number, y: number): void {
+    const cell = this.grid[y][x];
+    if (!cell.revealed || cell.adjacentMines <= 0) return;
+
+    const around = this.neighbors(x, y);
+    const flagCount = around.filter(([nx, ny]) => this.grid[ny][nx].flagged).length;
+    if (flagCount !== cell.adjacentMines) {
+      this.pushLog(`Chord失敗: 旗 ${flagCount}/${cell.adjacentMines}`);
+      return;
+    }
+
+    this.turn += 1;
+    for (const [nx, ny] of around) {
+      const n = this.grid[ny][nx];
+      if (n.hidden && !n.flagged) {
+        this.revealCell(nx, ny);
+      }
+    }
+
+    this.refreshUi();
+    this.redrawAll();
+    this.checkEndState();
   }
 
   private buildGrid(): Cell[][] {
@@ -236,7 +344,7 @@ export class GameScene extends Phaser.Scene {
     const r = Math.random();
     if (r < 0.14) return 'mine';
     if (r < 0.24) return 'ore';
-    if (r < 0.30) return 'heal';
+    if (r < 0.3) return 'heal';
     return 'safe';
   }
 
@@ -367,11 +475,12 @@ export class GameScene extends Phaser.Scene {
   }
 
   private refreshUi(): void {
-    this.hpText.setText(`HP: ${this.hp}`);
-    this.oreText.setText(`Ore: ${this.ore}`);
-    this.pickaxeText.setText(`Pickaxe: ${this.pickaxePower}`);
-    this.turnText.setText(`Turn: ${this.turn}`);
-    this.logText.setText(this.logLines.slice(-8).join('\n'));
+    this.hpText.setText(`HP:${this.hp}`);
+    this.oreText.setText(`Ore:${this.ore}`);
+    this.pickaxeText.setText(`Pick:${this.pickaxePower}`);
+    this.turnText.setText(`Turn:${this.turn}`);
+    this.flagModeText.setText(this.flagMode ? '🚩モードON' : '🚩モードOFF');
+    this.logText.setText(this.logLines.slice(-6).join('\n'));
   }
 
   private redrawAll(): void {
