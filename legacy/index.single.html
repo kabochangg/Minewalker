@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no"
+    />
+    <title>Minewalker MVP</title>
+    <style>
+      :root {
+        font-family: "Noto Sans JP", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+        color: #f2f5ff;
+        background-color: #0f131d;
+      }
+      * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+      html, body { margin: 0; width: 100%; min-height: 100%; background: linear-gradient(180deg, #101522 0%, #0b0f16 100%); }
+      body { display: flex; justify-content: center; padding: 10px; }
+      #app { width: min(100vw - 20px, 420px); }
+      .panel { background: #1d2433; border: 2px solid #3a4761; border-radius: 12px; padding: 10px; margin-bottom: 10px; }
+      #top-ui { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; font-weight: 700; }
+      #board { display: grid; grid-template-columns: repeat(10, 1fr); gap: 2px; }
+      .cell {
+        width: 100%; aspect-ratio: 1 / 1; border: 1px solid #191923; border-radius: 4px;
+        background: #4f4f57; color: #f3f5ff; font-size: 16px; font-weight: 700;
+        display: flex; justify-content: center; align-items: center; user-select: none;
+      }
+      .cell.safe { background: #2c3649; }
+      .cell.mine { background: #812c2c; }
+      .cell.ore { background: #37635f; }
+      .cell.heal { background: #315f3b; }
+      .cell.core { background: #7359b0; }
+      #log { min-height: 130px; font-size: 14px; white-space: pre-line; color: #cbd5ff; }
+      .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+      button {
+        border: 2px solid #7082ad; border-radius: 8px; background: #31405e; color: #fff;
+        padding: 10px 8px; font-size: 16px; font-weight: 700;
+      }
+      button:active { background: #415176; }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <div class="panel" id="top-ui">
+        <div id="hp">HP: 12</div>
+        <div id="ore">Ore: 0</div>
+        <div id="pickaxe">Pickaxe: 1</div>
+        <div id="turn">Turn: 0</div>
+      </div>
+      <div class="panel"><div id="board"></div></div>
+      <div class="panel">
+        <div id="log"></div>
+        <div class="actions">
+          <button id="upgrade">強化 (Ore 3)</button>
+          <button id="restart">リスタート</button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const GRID_W = 10, GRID_H = 14, LONG_PRESS_MS = 420;
+      const hpEl = document.getElementById('hp');
+      const oreEl = document.getElementById('ore');
+      const pickaxeEl = document.getElementById('pickaxe');
+      const turnEl = document.getElementById('turn');
+      const logEl = document.getElementById('log');
+      const boardEl = document.getElementById('board');
+
+      let state;
+
+      function newRun() {
+        state = { hp: 12, ore: 0, pickaxePower: 1, turn: 0, gameEnded: false, logLines: [], grid: [], cells: [] };
+        buildGrid();
+        renderBoard();
+        const cx = Math.floor(GRID_W / 2), cy = Math.floor(GRID_H / 2);
+        revealCell(cx, cy, true);
+        expandZeroes(cx, cy);
+        pushLog('地下拠点を構築開始。壁を壊して進もう。');
+        redrawAll();
+      }
+
+      function rollKind() {
+        const r = Math.random();
+        if (r < 0.14) return 'mine';
+        if (r < 0.24) return 'ore';
+        if (r < 0.30) return 'heal';
+        return 'safe';
+      }
+
+      function buildGrid() {
+        for (let y = 0; y < GRID_H; y++) {
+          state.grid[y] = [];
+          for (let x = 0; x < GRID_W; x++) {
+            state.grid[y][x] = { hidden: true, flagged: false, revealed: false, kind: rollKind(), adjacentMines: 0 };
+          }
+        }
+        const cx = Math.floor(GRID_W / 2), cy = Math.floor(GRID_H / 2);
+        state.grid[cy][cx] = { hidden: false, flagged: false, revealed: true, kind: 'safe', adjacentMines: 0 };
+        for (const [nx, ny] of neighbors(cx, cy)) {
+          if (state.grid[ny][nx].kind === 'mine' || state.grid[ny][nx].kind === 'core') state.grid[ny][nx].kind = 'safe';
+        }
+        const coreX = Math.floor(Math.random() * GRID_W), coreY = Math.floor(Math.random() * GRID_H);
+        if (coreX !== cx || coreY !== cy) state.grid[coreY][coreX].kind = 'core';
+
+        for (let y = 0; y < GRID_H; y++) {
+          for (let x = 0; x < GRID_W; x++) {
+            state.grid[y][x].adjacentMines = neighbors(x, y).filter(([nx, ny]) => state.grid[ny][nx].kind === 'mine').length;
+          }
+        }
+      }
+
+      function renderBoard() {
+        boardEl.innerHTML = '';
+        state.cells = [];
+        for (let y = 0; y < GRID_H; y++) {
+          state.cells[y] = [];
+          for (let x = 0; x < GRID_W; x++) {
+            const el = document.createElement('div');
+            el.className = 'cell';
+            let downAt = 0;
+            el.addEventListener('pointerdown', () => { downAt = Date.now(); });
+            el.addEventListener('pointerup', () => {
+              if (state.gameEnded) return;
+              const held = Date.now() - downAt;
+              if (held >= LONG_PRESS_MS) toggleFlag(x, y); else mineAction(x, y);
+            });
+            boardEl.appendChild(el);
+            state.cells[y][x] = el;
+          }
+        }
+      }
+
+      function toggleFlag(x, y) {
+        const c = state.grid[y][x];
+        if (!c.hidden || c.revealed) return;
+        c.flagged = !c.flagged;
+        pushLog(c.flagged ? `(${x},${y}) に旗を設置` : `(${x},${y}) の旗を解除`);
+        redrawCell(x, y);
+      }
+
+      function mineAction(x, y) {
+        const target = state.grid[y][x];
+        if (!target.hidden || target.flagged) return;
+        const adjacentRevealed = neighbors(x, y).some(([nx, ny]) => state.grid[ny][nx].revealed);
+        if (!adjacentRevealed) return pushLog('隣接する壁しか壊せない。');
+        state.turn += 1;
+        if (state.pickaxePower >= 2) {
+          for (const [dx, dy] of [[0,0],[1,0],[-1,0],[0,1],[0,-1]]) {
+            const tx = x + dx, ty = y + dy;
+            if (!inRange(tx, ty)) continue;
+            const c = state.grid[ty][tx];
+            if (!c.hidden || c.flagged) continue;
+            revealCell(tx, ty);
+          }
+        } else {
+          revealCell(x, y);
+        }
+        redrawAll();
+        checkEndState();
+      }
+
+      function revealCell(x, y, forceSafe = false) {
+        const c = state.grid[y][x];
+        if (!c.hidden || c.flagged) return;
+        c.hidden = false; c.revealed = true;
+        if (forceSafe) c.kind = 'safe';
+        if (c.kind === 'mine') return state.hp -= 3, pushLog('💥 地雷! HP -3');
+        if (c.kind === 'ore') state.ore += 1, pushLog('⛏️ 鉱石を入手 +1');
+        if (c.kind === 'heal') state.hp = Math.min(12, state.hp + 2), pushLog('🧪 回復 +2');
+        if (c.kind === 'core') return state.gameEnded = true, pushLog('🌟 Coreを発見! クリア!');
+        if (c.kind === 'safe') {
+          pushLog(`安全地帯。周囲地雷: ${c.adjacentMines}`);
+          if (c.adjacentMines === 0) expandZeroes(x, y);
+        }
+      }
+
+      function expandZeroes(startX, startY) {
+        const queue = [[startX, startY]], seen = new Set();
+        while (queue.length) {
+          const [x, y] = queue.shift();
+          const key = `${x},${y}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          const c = state.grid[y][x];
+          if (c.kind !== 'safe' || c.adjacentMines !== 0) continue;
+          for (const [nx, ny] of neighbors(x, y)) {
+            const n = state.grid[ny][nx];
+            if (n.hidden && !n.flagged && n.kind !== 'mine' && n.kind !== 'core') {
+              n.hidden = false; n.revealed = true;
+              if (n.kind === 'ore') state.ore += 1;
+              if (n.kind === 'heal') state.hp = Math.min(12, state.hp + 1);
+              if (n.kind === 'safe' && n.adjacentMines === 0) queue.push([nx, ny]);
+            }
+          }
+        }
+      }
+
+      function checkEndState() {
+        if (state.hp <= 0) {
+          state.hp = 0; state.gameEnded = true; pushLog('☠️ HPが尽きた。ゲームオーバー');
+        }
+      }
+
+      function neighbors(x, y) {
+        const out = [];
+        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+          if (!dx && !dy) continue;
+          const nx = x + dx, ny = y + dy;
+          if (inRange(nx, ny)) out.push([nx, ny]);
+        }
+        return out;
+      }
+      const inRange = (x, y) => x >= 0 && x < GRID_W && y >= 0 && y < GRID_H;
+
+      function redrawAll() {
+        for (let y = 0; y < GRID_H; y++) for (let x = 0; x < GRID_W; x++) redrawCell(x, y);
+        hpEl.textContent = `HP: ${state.hp}`;
+        oreEl.textContent = `Ore: ${state.ore}`;
+        pickaxeEl.textContent = `Pickaxe: ${state.pickaxePower}`;
+        turnEl.textContent = `Turn: ${state.turn}`;
+        logEl.textContent = state.logLines.slice(-8).join('\n');
+      }
+
+      function redrawCell(x, y) {
+        const c = state.grid[y][x], el = state.cells[y][x];
+        el.className = 'cell';
+        if (c.hidden) {
+          el.textContent = c.flagged ? '🚩' : '';
+          return;
+        }
+        el.classList.add(c.kind);
+        el.textContent = c.kind === 'mine' ? '💣' : c.kind === 'ore' ? '⛏' : c.kind === 'heal' ? '❤' : c.kind === 'core' ? '★' : (c.adjacentMines ? String(c.adjacentMines) : '');
+      }
+
+      function pushLog(message) {
+        state.logLines.push(`[${state.turn}] ${message}`);
+        redrawAll();
+      }
+
+      document.getElementById('upgrade').addEventListener('click', () => {
+        if (state.gameEnded) return;
+        if (state.ore < 3) return pushLog('Oreが足りない…');
+        state.ore -= 3;
+        state.pickaxePower += 1;
+        pushLog(`ピッケル強化! Power ${state.pickaxePower}`);
+      });
+      document.getElementById('restart').addEventListener('click', newRun);
+      newRun();
+    </script>
+  </body>
+</html>
