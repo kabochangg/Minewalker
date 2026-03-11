@@ -14,6 +14,17 @@ const GRID_W = 10;
 const GRID_H = 14;
 const LONG_PRESS_MS = 420;
 
+const NUMBER_COLORS: Record<number, string> = {
+  1: '#7ec8ff',
+  2: '#84f0a8',
+  3: '#ffd27d',
+  4: '#ff9fc2',
+  5: '#c6a8ff',
+  6: '#6ae8e8',
+  7: '#ffd9f2',
+  8: '#ffffff'
+};
+
 export class GameScene extends Phaser.Scene {
   private grid: Cell[][] = [];
   private cellBg: Phaser.GameObjects.Rectangle[][] = [];
@@ -38,6 +49,8 @@ export class GameScene extends Phaser.Scene {
   private cellSize = 32;
   private bottomY = 0;
   private panelWidth = 0;
+  private topPanelH = 0;
+  private bottomPanelH = 0;
 
   private logLines: string[] = [];
 
@@ -46,7 +59,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   create(): void {
-    this.cameras.main.setBackgroundColor('#12151f');
+    this.cameras.main.setBackgroundColor('#0d1320');
     this.computeLayout();
     this.drawFrames();
     this.addTopUi();
@@ -61,82 +74,88 @@ export class GameScene extends Phaser.Scene {
   private computeLayout(): void {
     const w = this.scale.gameSize.width;
     const h = this.scale.gameSize.height;
-    const horizontalPadding = 12;
-    const topPanelH = 100;
-    const bottomPanelH = 220;
-    const gap = 10;
+    const horizontalPadding = 8;
+    const gap = 8;
 
-    const maxBoardW = w - horizontalPadding * 2 - 12;
-    const maxBoardH = h - topPanelH - bottomPanelH - gap * 3;
-    this.cellSize = Math.max(24, Math.floor(Math.min(maxBoardW / GRID_W, maxBoardH / GRID_H)));
+    this.topPanelH = Math.max(84, Math.floor(h * 0.12));
+    this.bottomPanelH = Math.max(158, Math.floor(h * 0.2));
+
+    const maxBoardW = w - horizontalPadding * 2 - 10;
+    const maxBoardH = h - this.topPanelH - this.bottomPanelH - gap * 3;
+    this.cellSize = Math.max(20, Math.floor(Math.min(maxBoardW / GRID_W, maxBoardH / GRID_H)));
 
     const boardWidth = this.cellSize * GRID_W;
     const boardHeight = this.cellSize * GRID_H;
 
     this.boardX = Math.floor((w - boardWidth) / 2);
-    this.boardY = topPanelH + gap;
+    this.boardY = this.topPanelH + gap;
     this.bottomY = this.boardY + boardHeight + gap;
-    this.panelWidth = Math.min(w - horizontalPadding * 2, boardWidth + 20);
+    this.panelWidth = Math.min(w - horizontalPadding * 2, boardWidth + 16);
   }
 
   private drawFrames(): void {
     const w = this.scale.gameSize.width;
 
     this.add
-      .rectangle(w / 2, 50, this.panelWidth, 92, 0x1d2433)
-      .setStrokeStyle(2, 0x3a4761);
+      .rectangle(w / 2, this.topPanelH / 2, this.panelWidth, this.topPanelH - 4, 0x101723)
+      .setStrokeStyle(1, 0x2a3951);
 
     this.add
       .rectangle(
         w / 2,
         this.boardY + (GRID_H * this.cellSize) / 2,
-        GRID_W * this.cellSize + 12,
-        GRID_H * this.cellSize + 12,
-        0x1b2330
+        GRID_W * this.cellSize + 6,
+        GRID_H * this.cellSize + 6,
+        0x141d2a
       )
-      .setStrokeStyle(2, 0x3a4761);
+      .setStrokeStyle(1, 0x2a3951);
 
     this.add
-      .rectangle(w / 2, this.bottomY + 104, this.panelWidth, 206, 0x1d2433)
-      .setStrokeStyle(2, 0x3a4761);
+      .rectangle(w / 2, this.bottomY + this.bottomPanelH / 2, this.panelWidth, this.bottomPanelH - 4, 0x101723)
+      .setStrokeStyle(1, 0x2a3951);
   }
 
   private addTopUi(): void {
-    const left = Math.floor((this.scale.gameSize.width - this.panelWidth) / 2) + 12;
+    const left = Math.floor((this.scale.gameSize.width - this.panelWidth) / 2) + 10;
     const style: Phaser.Types.GameObjects.Text.TextStyle = {
       color: '#e8ecff',
-      fontSize: '17px',
+      fontSize: '16px',
       fontStyle: 'bold'
     };
 
-    this.hpText = this.add.text(left, 18, '', style);
-    this.oreText = this.add.text(left + 92, 18, '', style);
-    this.pickaxeText = this.add.text(left + 176, 18, '', style);
-    this.turnText = this.add.text(left, 44, '', style);
+    this.hpText = this.add.text(left, 14, '', style);
+    this.oreText = this.add.text(left + 86, 14, '', style);
+    this.pickaxeText = this.add.text(left + 160, 14, '', style);
+    this.turnText = this.add.text(left, 38, '', style);
 
-    this.add.text(left, 68, 'タップ: 掘る / 長押し: 🚩 / 数字タップ: Chord', {
+    this.add.text(left, 60, '通常: 開く / 🚩モード: 旗 / 長押し: 旗 / 数字: Chord', {
       color: '#c8d2ef',
-      fontSize: '12px'
+      fontSize: '11px'
     });
   }
 
   private addBottomUi(): void {
-    const left = Math.floor((this.scale.gameSize.width - this.panelWidth) / 2) + 12;
-    const buttonGap = 8;
-    const buttonWidth = Math.floor((this.panelWidth - 24 - buttonGap * 2) / 3);
+    const left = Math.floor((this.scale.gameSize.width - this.panelWidth) / 2) + 10;
+    const buttonGap = 6;
+    const buttonWidth = Math.floor((this.panelWidth - 20 - buttonGap * 2) / 3);
 
-    this.logText = this.add.text(left, this.bottomY + 14, '', {
+    this.logText = this.add.text(left, this.bottomY + 8, '', {
       color: '#cbd5ff',
-      fontSize: '13px',
-      wordWrap: { width: this.panelWidth - 24 }
+      fontSize: '12px',
+      wordWrap: { width: this.panelWidth - 20 }
     });
 
-    this.add.text(left, this.bottomY + 118, '凡例: 💣地雷 / ⛏鉱石 / ❤回復 / ★コア / 🚩旗', {
+    this.add.text(left, this.bottomY + 72, '凡例: ⬛未開封 / 🚩旗 / 🟥危険 / 1-8=周囲地雷数', {
       color: '#9db2da',
       fontSize: '12px'
     });
 
-    const upgradeBtn = this.makeButton(left, this.bottomY + 146, buttonWidth, 44, '強化 Ore3', () => {
+    this.add.text(left, this.bottomY + 90, 'アイコン: 💣地雷 / ⛏鉱石 / ❤回復 / ★コア', {
+      color: '#9db2da',
+      fontSize: '12px'
+    });
+
+    const upgradeBtn = this.makeButton(left, this.bottomY + 112, buttonWidth, 40, '強化 Ore3', () => {
       if (this.gameEnded) return;
       if (this.ore < 3) {
         this.pushLog('Oreが足りない…');
@@ -148,13 +167,13 @@ export class GameScene extends Phaser.Scene {
       this.refreshUi();
     });
 
-    const flagBtn = this.makeButton(left + buttonWidth + buttonGap, this.bottomY + 146, buttonWidth, 44, '', () => {
+    const flagBtn = this.makeButton(left + buttonWidth + buttonGap, this.bottomY + 112, buttonWidth, 40, '', () => {
       this.flagMode = !this.flagMode;
       this.refreshUi();
     });
     this.flagModeText = flagBtn.list[1] as Phaser.GameObjects.Text;
 
-    const restartBtn = this.makeButton(left + (buttonWidth + buttonGap) * 2, this.bottomY + 146, buttonWidth, 44, 'リスタート', () => {
+    const restartBtn = this.makeButton(left + (buttonWidth + buttonGap) * 2, this.bottomY + 112, buttonWidth, 40, 'リスタート', () => {
       this.newRun();
     });
 
@@ -170,21 +189,21 @@ export class GameScene extends Phaser.Scene {
     onTap: () => void
   ): Phaser.GameObjects.Container {
     const box = this.add
-      .rectangle(0, 0, w, h, 0x31405e)
+      .rectangle(0, 0, w, h, 0x293753)
       .setOrigin(0)
-      .setStrokeStyle(2, 0x7082ad);
+      .setStrokeStyle(1, 0x788cb8);
     const text = this.add
-      .text(w / 2, h / 2, label, { color: '#ffffff', fontSize: '14px' })
+      .text(w / 2, h / 2, label, { color: '#ffffff', fontSize: '13px' })
       .setOrigin(0.5);
     const c = this.add.container(x, y, [box, text]);
     box.setInteractive({ useHandCursor: true }).on('pointerdown', () => {
-      box.setFillStyle(0x415176);
+      box.setFillStyle(0x3d4f76);
     });
     box.on('pointerup', () => {
-      box.setFillStyle(0x31405e);
+      box.setFillStyle(0x293753);
       onTap();
     });
-    box.on('pointerout', () => box.setFillStyle(0x31405e));
+    box.on('pointerout', () => box.setFillStyle(0x293753));
     return c;
   }
 
@@ -212,18 +231,18 @@ export class GameScene extends Phaser.Scene {
         const px = this.boardX + x * this.cellSize;
         const py = this.boardY + y * this.cellSize;
         const rect = this.add
-          .rectangle(px, py, this.cellSize - 2, this.cellSize - 2, 0x4f4f57)
+          .rectangle(px, py, this.cellSize - 1, this.cellSize - 1, 0x3a4457)
           .setOrigin(0)
-          .setStrokeStyle(1, 0x191923);
+          .setStrokeStyle(1, 0x212d40);
         const txt = this.add
           .text(px + this.cellSize / 2, py + this.cellSize / 2, '', {
             color: '#f3f5ff',
-            fontSize: this.cellSize >= 32 ? '16px' : '14px',
+            fontSize: this.cellSize >= 30 ? '16px' : '14px',
             fontStyle: 'bold'
           })
           .setOrigin(0.5);
 
-        const zone = this.add.zone(px, py, this.cellSize - 2, this.cellSize - 2).setOrigin(0);
+        const zone = this.add.zone(px, py, this.cellSize - 1, this.cellSize - 1).setOrigin(0);
         this.bindCellPointer(zone, x, y);
 
         this.cellBg[y][x] = rect;
@@ -236,7 +255,7 @@ export class GameScene extends Phaser.Scene {
     this.revealCell(cx, cy, true);
     this.expandZeroes(cx, cy);
 
-    this.pushLog('地下拠点を構築開始。壁を壊して進もう。');
+    this.pushLog('地雷原を突破しよう。テンポ重視で掘削!');
     this.refreshUi();
     this.redrawAll();
   }
@@ -282,21 +301,23 @@ export class GameScene extends Phaser.Scene {
 
     const around = this.neighbors(x, y);
     const flagCount = around.filter(([nx, ny]) => this.grid[ny][nx].flagged).length;
-    if (flagCount !== cell.adjacentMines) {
-      this.pushLog(`Chord失敗: 旗 ${flagCount}/${cell.adjacentMines}`);
-      return;
-    }
+    if (flagCount !== cell.adjacentMines) return;
 
     this.turn += 1;
+    let opened = 0;
     for (const [nx, ny] of around) {
       const n = this.grid[ny][nx];
       if (n.hidden && !n.flagged) {
         this.revealCell(nx, ny);
+        opened += 1;
       }
     }
 
+    if (opened === 0) return;
     this.refreshUi();
-    this.redrawAll();
+    for (const [nx, ny] of around) {
+      this.redrawCell(nx, ny);
+    }
     this.checkEndState();
   }
 
@@ -361,7 +382,6 @@ export class GameScene extends Phaser.Scene {
     const cell = this.grid[y][x];
     if (!cell.hidden || cell.revealed) return;
     cell.flagged = !cell.flagged;
-    this.pushLog(cell.flagged ? `(${x},${y}) に旗を設置` : `(${x},${y}) の旗を解除`);
     this.redrawCell(x, y);
   }
 
@@ -393,7 +413,6 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.refreshUi();
-    this.redrawAll();
     this.checkEndState();
   }
 
@@ -410,7 +429,8 @@ export class GameScene extends Phaser.Scene {
 
     if (cell.kind === 'mine') {
       this.hp -= 3;
-      this.pushLog(`💥 地雷! HP -3`);
+      this.pushLog('💥 地雷! HP -3');
+      this.redrawCell(x, y);
       return;
     }
 
@@ -427,15 +447,17 @@ export class GameScene extends Phaser.Scene {
     if (cell.kind === 'core') {
       this.pushLog('🌟 Coreを発見! クリア!');
       this.gameEnded = true;
+      this.redrawCell(x, y);
       return;
     }
 
     if (cell.kind === 'safe') {
-      this.pushLog(`安全地帯。周囲地雷: ${cell.adjacentMines}`);
       if (cell.adjacentMines === 0) {
         this.expandZeroes(x, y);
       }
     }
+
+    this.redrawCell(x, y);
   }
 
   private expandZeroes(startX: number, startY: number): void {
@@ -461,6 +483,7 @@ export class GameScene extends Phaser.Scene {
           if (n.kind === 'safe' && n.adjacentMines === 0) {
             queue.push([nx, ny]);
           }
+          this.redrawCell(nx, ny);
         }
       }
     }
@@ -480,7 +503,7 @@ export class GameScene extends Phaser.Scene {
     this.pickaxeText.setText(`Pick:${this.pickaxePower}`);
     this.turnText.setText(`Turn:${this.turn}`);
     this.flagModeText.setText(this.flagMode ? '🚩モードON' : '🚩モードOFF');
-    this.logText.setText(this.logLines.slice(-6).join('\n'));
+    this.logText.setText(this.logLines.slice(-4).join('\n'));
   }
 
   private redrawAll(): void {
@@ -497,31 +520,37 @@ export class GameScene extends Phaser.Scene {
     const txt = this.cellText[y][x];
 
     if (cell.hidden) {
-      bg.setFillStyle(0x4f4f57);
+      bg.setFillStyle(cell.flagged ? 0x374c73 : 0x3a4457);
+      txt.setColor('#ffffff');
       txt.setText(cell.flagged ? '🚩' : '');
       return;
     }
 
     switch (cell.kind) {
       case 'mine':
-        bg.setFillStyle(0x812c2c);
+        bg.setFillStyle(0x8d2b2b);
+        txt.setColor('#ffffff');
         txt.setText('💣');
         break;
       case 'ore':
-        bg.setFillStyle(0x37635f);
+        bg.setFillStyle(0x2a6f78);
+        txt.setColor('#f2fbff');
         txt.setText('⛏');
         break;
       case 'heal':
-        bg.setFillStyle(0x315f3b);
+        bg.setFillStyle(0x2f7b4a);
+        txt.setColor('#f2fbff');
         txt.setText('❤');
         break;
       case 'core':
-        bg.setFillStyle(0x7359b0);
+        bg.setFillStyle(0x6b53b0);
+        txt.setColor('#ffffff');
         txt.setText('★');
         break;
       case 'safe':
       default:
-        bg.setFillStyle(0x2c3649);
+        bg.setFillStyle(0x192233);
+        txt.setColor(NUMBER_COLORS[cell.adjacentMines] ?? '#dce7ff');
         txt.setText(cell.adjacentMines > 0 ? String(cell.adjacentMines) : '');
         break;
     }
