@@ -81,6 +81,24 @@ export class GameScene extends Phaser.Scene {
   private safeTop = 0;
   private safeBottom = 0;
 
+  private boardLayer!: Phaser.GameObjects.Container;
+  private boardBaseX = 0;
+  private boardBaseY = 0;
+  private boardScale = 1;
+  private boardOffsetX = 0;
+  private boardOffsetY = 0;
+  private readonly minBoardScale = 1;
+  private readonly maxBoardScale = 2.2;
+
+  private pinchDistance = 0;
+  private pinchScale = 1;
+  private pinchCenterX = 0;
+  private pinchCenterY = 0;
+  private pinchOffsetX = 0;
+  private pinchOffsetY = 0;
+  private isPinching = false;
+  private suppressTap = false;
+
   constructor() {
     super('GameScene');
   }
@@ -96,11 +114,23 @@ export class GameScene extends Phaser.Scene {
     this.drawFrames();
     this.addTopUi();
     this.addBottomUi();
+    this.initBoardLayer();
     this.newRun();
+    this.setupPinchZoom();
 
     this.scale.on('resize', () => {
       this.scene.restart();
     });
+  }
+
+  private initBoardLayer(): void {
+    this.boardBaseX = this.boardX;
+    this.boardBaseY = this.boardY;
+    this.boardScale = 1;
+    this.boardOffsetX = 0;
+    this.boardOffsetY = 0;
+    this.boardLayer = this.add.container(this.boardBaseX, this.boardBaseY);
+    this.boardLayer.setDepth(1);
   }
 
   private computeLayout(): void {
@@ -296,8 +326,7 @@ export class GameScene extends Phaser.Scene {
     this.grid = this.buildGrid();
     this.computeAdjacency();
 
-    this.cellBg.flat().forEach((r) => r.destroy());
-    this.cellText.flat().forEach((t) => t.destroy());
+    this.boardLayer.removeAll(true);
     this.cellBg = [];
     this.cellText = [];
 
@@ -307,8 +336,8 @@ export class GameScene extends Phaser.Scene {
       this.cellBg[y] = [];
       this.cellText[y] = [];
       for (let x = 0; x < width; x += 1) {
-        const px = this.boardX + x * this.cellSize;
-        const py = this.boardY + y * this.cellSize;
+        const px = x * this.cellSize;
+        const py = y * this.cellSize;
         const rect = this.add
           .rectangle(px, py, this.cellSize - 2, this.cellSize - 2, 0x4a556f)
           .setOrigin(0)
@@ -323,6 +352,7 @@ export class GameScene extends Phaser.Scene {
 
         const zone = this.add.zone(px, py, this.cellSize - 2, this.cellSize - 2).setOrigin(0);
         this.bindCellPointer(zone, x, y);
+        this.boardLayer.add([rect, txt, zone]);
 
         this.cellBg[y][x] = rect;
         this.cellText[y][x] = txt;
@@ -331,6 +361,7 @@ export class GameScene extends Phaser.Scene {
 
     this.refreshUi();
     this.redrawAll();
+    this.applyBoardTransform();
   }
 
   private bindCellPointer(zone: Phaser.GameObjects.Zone, x: number, y: number): void {
@@ -342,6 +373,7 @@ export class GameScene extends Phaser.Scene {
     let pressTimer: Phaser.Time.TimerEvent | null = null;
 
     zone.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+      if (this.hasMultiTouch()) return;
       downAt = this.time.now;
       downX = pointer.x;
       downY = pointer.y;
@@ -350,6 +382,7 @@ export class GameScene extends Phaser.Scene {
       pressTimer?.remove(false);
       pressTimer = this.time.delayedCall(LONG_PRESS_MS, () => {
         if (this.gameEnded) return;
+        if (this.hasMultiTouch()) return;
         if (!pointer.isDown) return;
         const moved = Phaser.Math.Distance.Between(pointer.x, pointer.y, downX, downY);
         if (moved > TAP_MOVE_TOLERANCE) return;
@@ -363,6 +396,7 @@ export class GameScene extends Phaser.Scene {
       pressTimer?.remove(false);
       pressTimer = null;
 
+      if (this.suppressTap || this.isPinching) return;
       const moved = Phaser.Math.Distance.Between(pointer.x, pointer.y, downX, downY);
       if (moved > TAP_MOVE_TOLERANCE) return;
 
@@ -375,6 +409,103 @@ export class GameScene extends Phaser.Scene {
       pressTimer?.remove(false);
       pressTimer = null;
     });
+  }
+
+  private setupPinchZoom(): void {
+    this.input.addPointer(2);
+
+    this.input.on('pointerdown', () => {
+      if (this.hasMultiTouch()) {
+        this.startPinch();
+      }
+    });
+
+    this.input.on('pointermove', () => {
+      if (this.isPinching) {
+        this.updatePinch();
+      }
+    });
+
+    this.input.on('pointerup', () => {
+      if (this.isPinching && !this.hasMultiTouch()) {
+        this.isPinching = false;
+        this.suppressTap = true;
+      }
+      if (!this.hasActiveTouch()) {
+        this.suppressTap = false;
+      }
+    });
+  }
+
+  private hasActiveTouch(): boolean {
+    return this.input.manager.pointers.some((pointer) => pointer.isDown);
+  }
+
+  private hasMultiTouch(): boolean {
+    let downCount = 0;
+    for (const pointer of this.input.manager.pointers) {
+      if (!pointer.isDown) continue;
+      downCount += 1;
+      if (downCount >= 2) return true;
+    }
+    return false;
+  }
+
+  private getTwoActivePointers(): [Phaser.Input.Pointer, Phaser.Input.Pointer] | null {
+    const activePointers = this.input.manager.pointers.filter((pointer) => pointer.isDown);
+    if (activePointers.length < 2) return null;
+    return [activePointers[0], activePointers[1]];
+  }
+
+  private startPinch(): void {
+    const pointers = this.getTwoActivePointers();
+    if (!pointers) return;
+
+    const [p1, p2] = pointers;
+    this.isPinching = true;
+    this.suppressTap = true;
+    this.pinchDistance = Phaser.Math.Distance.Between(p1.x, p1.y, p2.x, p2.y);
+    this.pinchScale = this.boardScale;
+    this.pinchCenterX = (p1.x + p2.x) / 2;
+    this.pinchCenterY = (p1.y + p2.y) / 2;
+    this.pinchOffsetX = this.boardOffsetX;
+    this.pinchOffsetY = this.boardOffsetY;
+  }
+
+  private updatePinch(): void {
+    const pointers = this.getTwoActivePointers();
+    if (!pointers || this.pinchDistance <= 0) return;
+
+    const [p1, p2] = pointers;
+    const distance = Phaser.Math.Distance.Between(p1.x, p1.y, p2.x, p2.y);
+    const centerX = (p1.x + p2.x) / 2;
+    const centerY = (p1.y + p2.y) / 2;
+
+    const zoomRatio = distance / this.pinchDistance;
+    const targetScale = Phaser.Math.Clamp(this.pinchScale * zoomRatio, this.minBoardScale, this.maxBoardScale);
+
+    const localX = (this.pinchCenterX - (this.boardBaseX + this.pinchOffsetX)) / this.pinchScale;
+    const localY = (this.pinchCenterY - (this.boardBaseY + this.pinchOffsetY)) / this.pinchScale;
+
+    this.boardScale = targetScale;
+    this.boardOffsetX = centerX - localX * this.boardScale - this.boardBaseX;
+    this.boardOffsetY = centerY - localY * this.boardScale - this.boardBaseY;
+    this.clampBoardOffset();
+    this.applyBoardTransform();
+  }
+
+  private clampBoardOffset(): void {
+    const baseWidth = this.currentDifficulty.width * this.cellSize;
+    const baseHeight = this.currentDifficulty.height * this.cellSize;
+    const maxOffsetX = Math.max(0, (baseWidth * this.boardScale - baseWidth) * 0.5 + 18);
+    const maxOffsetY = Math.max(0, (baseHeight * this.boardScale - baseHeight) * 0.5 + 18);
+    this.boardOffsetX = Phaser.Math.Clamp(this.boardOffsetX, -maxOffsetX, maxOffsetX);
+    this.boardOffsetY = Phaser.Math.Clamp(this.boardOffsetY, -maxOffsetY, maxOffsetY);
+  }
+
+  private applyBoardTransform(): void {
+    this.boardLayer.setPosition(this.boardBaseX + this.boardOffsetX, this.boardBaseY + this.boardOffsetY);
+    this.boardLayer.setScale(this.boardScale);
   }
 
   private onCellTap(x: number, y: number): void {
