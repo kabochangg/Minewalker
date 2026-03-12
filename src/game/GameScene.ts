@@ -16,14 +16,21 @@ const LONG_PRESS_MS = 420;
 const TAP_MOVE_TOLERANCE = 14;
 
 const NUMBER_COLORS: Record<number, string> = {
-  1: '#6ec8ff',
-  2: '#7ad8ff',
-  3: '#ffd36b',
-  4: '#ff9f8b',
-  5: '#d49cff',
-  6: '#95f5f0',
-  7: '#f6d7ff',
-  8: '#ffffff'
+  1: '#4ea7ff',
+  2: '#32c36b',
+  3: '#f55f57',
+  4: '#7468ff',
+  5: '#af433c',
+  6: '#1fabb0',
+  7: '#202944',
+  8: '#4f4f4f'
+};
+
+const CELL_SYMBOL: Record<Exclude<CellKind, 'safe'>, string> = {
+  mine: '✹',
+  ore: '◆',
+  heal: '+',
+  core: '◎'
 };
 
 export class GameScene extends Phaser.Scene {
@@ -121,11 +128,11 @@ export class GameScene extends Phaser.Scene {
       .rectangle(
         w / 2,
         this.boardY + (GRID_H * this.cellSize) / 2,
-        GRID_W * this.cellSize + 6,
-        GRID_H * this.cellSize + 6,
-        0x0a1428
+        GRID_W * this.cellSize + 10,
+        GRID_H * this.cellSize + 10,
+        0x0a1324
       )
-      .setStrokeStyle(1, 0x2a446f, 0.95);
+      .setStrokeStyle(2, 0x476998, 0.95);
 
     this.add
       .rectangle(w / 2, this.bottomY + this.bottomPanelH / 2, this.panelWidth, this.bottomPanelH - 4, 0x081126)
@@ -287,18 +294,18 @@ export class GameScene extends Phaser.Scene {
         const px = this.boardX + x * this.cellSize;
         const py = this.boardY + y * this.cellSize;
         const rect = this.add
-          .rectangle(px, py, this.cellSize - 1, this.cellSize - 1, 0x46516a)
+          .rectangle(px, py, this.cellSize - 2, this.cellSize - 2, 0x4a556f)
           .setOrigin(0)
-          .setStrokeStyle(1, 0x2f3e58, 0.95);
+          .setStrokeStyle(1, 0x2a3447, 0.95);
         const txt = this.add
           .text(px + this.cellSize / 2, py + this.cellSize / 2, '', {
             color: '#f3f5ff',
-            fontSize: this.cellSize >= 30 ? '16px' : '14px',
+            fontSize: this.cellSize >= 30 ? '19px' : '16px',
             fontStyle: 'bold'
           })
           .setOrigin(0.5);
 
-        const zone = this.add.zone(px, py, this.cellSize - 1, this.cellSize - 1).setOrigin(0);
+        const zone = this.add.zone(px, py, this.cellSize - 2, this.cellSize - 2).setOrigin(0);
         this.bindCellPointer(zone, x, y);
 
         this.cellBg[y][x] = rect;
@@ -607,37 +614,43 @@ export class GameScene extends Phaser.Scene {
     const txt = this.cellText[y][x];
 
     if (cell.hidden) {
-      bg.setFillStyle(cell.flagged ? 0x3d4d73 : 0x45506a);
-      txt.setColor('#ffffff');
-      txt.setText(cell.flagged ? '🚩' : '');
+      bg.setFillStyle(cell.flagged ? 0x6f4f2a : 0x4b5569);
+      bg.setStrokeStyle(1, cell.flagged ? 0xa27b48 : 0x30384a, 1);
+      txt.setColor(cell.flagged ? '#ffe4b3' : '#ffffff');
+      txt.setText(cell.flagged ? '⚑' : '');
       return;
     }
 
     switch (cell.kind) {
       case 'mine':
-        bg.setFillStyle(0x973f4c);
-        txt.setColor('#ffffff');
-        txt.setText('💣');
+        bg.setFillStyle(0xa33f4f);
+        bg.setStrokeStyle(1, 0xda7b88, 1);
+        txt.setColor('#fff5f6');
+        txt.setText(CELL_SYMBOL.mine);
         break;
       case 'ore':
-        bg.setFillStyle(0x2d6f7a);
-        txt.setColor('#e8fdff');
-        txt.setText('');
+        bg.setFillStyle(0x2f7b89);
+        bg.setStrokeStyle(1, 0x65b6c5, 1);
+        txt.setColor('#defbff');
+        txt.setText(CELL_SYMBOL.ore);
         break;
       case 'heal':
-        bg.setFillStyle(0x2f5d89);
-        txt.setColor('#f2fbff');
-        txt.setText('');
+        bg.setFillStyle(0x3c6f55);
+        bg.setStrokeStyle(1, 0x7db592, 1);
+        txt.setColor('#e9fff1');
+        txt.setText(CELL_SYMBOL.heal);
         break;
       case 'core':
-        bg.setFillStyle(0x3b7e42);
-        txt.setColor('#ffffff');
-        txt.setText('');
+        bg.setFillStyle(0x7a5cad);
+        bg.setStrokeStyle(1, 0xbaa1e0, 1);
+        txt.setColor('#fbf4ff');
+        txt.setText(CELL_SYMBOL.core);
         break;
       case 'safe':
       default:
-        bg.setFillStyle(0x15223a);
-        txt.setColor(NUMBER_COLORS[cell.adjacentMines] ?? '#dce7ff');
+        bg.setFillStyle(0xdce4ef);
+        bg.setStrokeStyle(1, 0xa8b5c7, 1);
+        txt.setColor(NUMBER_COLORS[cell.adjacentMines] ?? '#3a4a60');
         txt.setText(cell.adjacentMines > 0 ? String(cell.adjacentMines) : '');
         break;
     }
