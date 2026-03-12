@@ -59,7 +59,14 @@ export class GameScene extends Phaser.Scene {
   private minesText!: Phaser.GameObjects.Text;
   private timerText!: Phaser.GameObjects.Text;
   private flagModeText!: Phaser.GameObjects.Text;
-  private difficultyText!: Phaser.GameObjects.Text;
+  private difficultyButtons: Record<
+    DifficultyKey,
+    { box: Phaser.GameObjects.Rectangle; text: Phaser.GameObjects.Text }
+  > = {
+    beginner: null as unknown as { box: Phaser.GameObjects.Rectangle; text: Phaser.GameObjects.Text },
+    intermediate: null as unknown as { box: Phaser.GameObjects.Rectangle; text: Phaser.GameObjects.Text },
+    advanced: null as unknown as { box: Phaser.GameObjects.Rectangle; text: Phaser.GameObjects.Text }
+  };
   private helpModal!: Phaser.GameObjects.Container;
 
   private currentDifficultyKey: DifficultyKey = DEFAULT_DIFFICULTY;
@@ -103,7 +110,7 @@ export class GameScene extends Phaser.Scene {
     this.safeTop = Number.isFinite(safeTop) ? safeTop : 0;
     this.safeBottom = Number.isFinite(safeBottom) ? safeBottom : 0;
 
-    this.topPanelH = 58;
+    this.topPanelH = 92;
     this.bottomPanelH = 52;
 
     const maxBoardW = w - horizontalPadding * 2 - 10;
@@ -160,17 +167,32 @@ export class GameScene extends Phaser.Scene {
       })
       .setOrigin(1, 0);
 
-    this.difficultyText = this.add
-      .text(this.scale.gameSize.width / 2, this.safeTop + 18, '', {
-        color: '#c8ddff',
-        fontSize: '12px',
-        fontStyle: 'bold'
-      })
-      .setOrigin(0.5, 0)
-      .setInteractive({ useHandCursor: true })
-      .on('pointerup', () => {
-        this.cycleDifficulty();
-      });
+    this.add.text(this.scale.gameSize.width / 2, this.safeTop + 41, '難易度', {
+      color: '#c8ddff',
+      fontSize: '11px',
+      fontStyle: 'bold'
+    }).setOrigin(0.5, 0);
+
+    this.addDifficultySelector();
+  }
+
+  private addDifficultySelector(): void {
+    const left = Math.floor((this.scale.gameSize.width - this.panelWidth) / 2) + 10;
+    const buttonGap = 4;
+    const buttonWidth = Math.floor((this.panelWidth - 20 - buttonGap * 2) / 3);
+    const buttonY = this.safeTop + 56;
+
+    DIFFICULTY_ORDER.forEach((key, idx) => {
+      const x = left + idx * (buttonWidth + buttonGap);
+      const btn = this.makeButton(x, buttonY, buttonWidth, 26, DIFFICULTY_PRESETS[key].label, () => {
+        this.setDifficulty(key);
+      }, '11px');
+
+      this.difficultyButtons[key] = {
+        box: btn.list[0] as Phaser.GameObjects.Rectangle,
+        text: btn.list[1] as Phaser.GameObjects.Text
+      };
+    });
   }
 
   private addBottomUi(): void {
@@ -234,14 +256,15 @@ export class GameScene extends Phaser.Scene {
     w: number,
     h: number,
     label: string,
-    onTap: () => void
+    onTap: () => void,
+    fontSize = '13px'
   ): Phaser.GameObjects.Container {
     const box = this.add
       .rectangle(0, 0, w, h, 0x2a385a)
       .setOrigin(0)
       .setStrokeStyle(1, 0x7796c7, 0.9);
     const text = this.add
-      .text(w / 2, h / 2, label, { color: '#f1f7ff', fontSize: '13px', fontStyle: 'bold' })
+      .text(w / 2, h / 2, label, { color: '#f1f7ff', fontSize, fontStyle: 'bold' })
       .setOrigin(0.5);
     const c = this.add.container(x, y, [box, text]);
     box.setInteractive({ useHandCursor: true }).on('pointerdown', () => {
@@ -537,7 +560,19 @@ export class GameScene extends Phaser.Scene {
     this.minesText.setText(`🚩 ${Math.max(remainingMines, 0)}`);
     this.timerText.setText(`⏱ ${this.formatTime(this.elapsedSeconds)}`);
     this.flagModeText.setText(this.flagMode ? '🚩ON' : '🚩OFF');
-    this.difficultyText.setText(`難易度: ${this.currentDifficulty.label}`);
+    this.refreshDifficultyButtons();
+  }
+
+  private refreshDifficultyButtons(): void {
+    DIFFICULTY_ORDER.forEach((key) => {
+      const btn = this.difficultyButtons[key];
+      if (!btn) return;
+
+      const active = key === this.currentDifficultyKey;
+      btn.box.setFillStyle(active ? 0x3f66a3 : 0x2a385a);
+      btn.box.setStrokeStyle(1, active ? 0x9fc2ff : 0x7796c7, 0.95);
+      btn.text.setColor(active ? '#f7fbff' : '#d6e5ff');
+    });
   }
 
   private redrawAll(): void {
@@ -648,10 +683,9 @@ export class GameScene extends Phaser.Scene {
     return x >= 0 && x < width && y >= 0 && y < height;
   }
 
-  private cycleDifficulty(): void {
-    const currentIdx = DIFFICULTY_ORDER.indexOf(this.currentDifficultyKey);
-    const nextIdx = (currentIdx + 1) % DIFFICULTY_ORDER.length;
-    this.currentDifficultyKey = DIFFICULTY_ORDER[nextIdx];
+  private setDifficulty(nextDifficulty: DifficultyKey): void {
+    if (nextDifficulty === this.currentDifficultyKey) return;
+    this.currentDifficultyKey = nextDifficulty;
     this.scene.restart();
   }
 
