@@ -85,8 +85,13 @@ export class GameScene extends Phaser.Scene {
     super('GameScene');
   }
 
+  private snap(value: number): number {
+    return Math.round(value);
+  }
+
   create(): void {
     this.cameras.main.setBackgroundColor('#060d1b');
+    this.cameras.main.roundPixels = true;
     this.computeLayout();
     this.drawFrames();
     this.addTopUi();
@@ -131,13 +136,13 @@ export class GameScene extends Phaser.Scene {
     const w = this.scale.gameSize.width;
 
     this.add
-      .rectangle(w / 2, this.safeTop + this.topPanelH / 2, this.panelWidth, this.topPanelH - 4, 0x081126)
+      .rectangle(this.snap(w / 2), this.snap(this.safeTop + this.topPanelH / 2), this.panelWidth, this.topPanelH - 4, 0x081126)
       .setStrokeStyle(1, 0x28406d, 0.95);
 
     this.add
       .rectangle(
-        w / 2,
-        this.boardY + (this.currentDifficulty.height * this.cellSize) / 2,
+        this.snap(w / 2),
+        this.snap(this.boardY + (this.currentDifficulty.height * this.cellSize) / 2),
         this.currentDifficulty.width * this.cellSize + 10,
         this.currentDifficulty.height * this.cellSize + 10,
         0x0a1324
@@ -145,7 +150,7 @@ export class GameScene extends Phaser.Scene {
       .setStrokeStyle(2, 0x476998, 0.95);
 
     this.add
-      .rectangle(w / 2, this.bottomY + this.bottomPanelH / 2, this.panelWidth, this.bottomPanelH - 4, 0x081126)
+      .rectangle(this.snap(w / 2), this.snap(this.bottomY + this.bottomPanelH / 2), this.panelWidth, this.bottomPanelH - 4, 0x081126)
       .setStrokeStyle(1, 0x28406d, 0.95);
   }
 
@@ -167,7 +172,7 @@ export class GameScene extends Phaser.Scene {
       })
       .setOrigin(1, 0);
 
-    this.add.text(this.scale.gameSize.width / 2, this.safeTop + 41, '難易度', {
+    this.add.text(this.snap(this.scale.gameSize.width / 2), this.safeTop + 41, '難易度', {
       color: '#c8ddff',
       fontSize: '11px',
       fontStyle: 'bold'
@@ -225,10 +230,10 @@ export class GameScene extends Phaser.Scene {
     const h = this.scale.gameSize.height;
     const modalW = Math.min(this.panelWidth, w - 20);
     const modalH = Math.min(270, h - this.safeTop - this.safeBottom - 32);
-    const left = (w - modalW) / 2;
-    const top = (h - modalH) / 2;
+    const left = this.snap((w - modalW) / 2);
+    const top = this.snap((h - modalH) / 2);
 
-    const scrim = this.add.rectangle(w / 2, h / 2, w, h, 0x000000, 0.64).setInteractive();
+    const scrim = this.add.rectangle(this.snap(w / 2), this.snap(h / 2), w, h, 0x000000, 0.64).setInteractive();
     const panel = this.add.rectangle(left, top, modalW, modalH, 0x0b1830).setOrigin(0).setStrokeStyle(1, 0x6a8ec8, 0.95);
     const title = this.add.text(left + 12, top + 10, '遊び方', {
       color: '#f3f7ff',
@@ -264,7 +269,7 @@ export class GameScene extends Phaser.Scene {
       .setOrigin(0)
       .setStrokeStyle(1, 0x7796c7, 0.9);
     const text = this.add
-      .text(w / 2, h / 2, label, { color: '#f1f7ff', fontSize, fontStyle: 'bold' })
+      .text(this.snap(w / 2), this.snap(h / 2), label, { color: '#f1f7ff', fontSize, fontStyle: 'bold' })
       .setOrigin(0.5);
     const c = this.add.container(x, y, [box, text]);
     box.setInteractive({ useHandCursor: true }).on('pointerdown', () => {
@@ -309,7 +314,7 @@ export class GameScene extends Phaser.Scene {
           .setOrigin(0)
           .setStrokeStyle(1, 0x2a3447, 0.95);
         const txt = this.add
-          .text(px + this.cellSize / 2, py + this.cellSize / 2, '', {
+          .text(this.snap(px + this.cellSize / 2), this.snap(py + this.cellSize / 2), '', {
             color: '#f3f5ff',
             fontSize: this.cellSize >= 30 ? '19px' : '16px',
             fontStyle: 'bold'

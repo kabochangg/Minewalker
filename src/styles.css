@@ -4,6 +4,10 @@
   background-color: #0b1220;
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
+
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: geometricPrecision;
 }
 
 * {
@@ -44,6 +48,11 @@ body {
 
 canvas {
   display: block;
+  width: 100%;
+  height: 100%;
   border-radius: 0;
   box-shadow: none;
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
+  image-rendering: pixelated;
 }
