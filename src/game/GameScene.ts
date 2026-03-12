@@ -27,7 +27,7 @@ const DIFFICULTY_PRESETS: Record<DifficultyKey, DifficultyPreset> = {
 
 const DIFFICULTY_ORDER: DifficultyKey[] = ['beginner', 'intermediate', 'advanced'];
 const DEFAULT_DIFFICULTY: DifficultyKey = 'beginner';
-const LONG_PRESS_MS = 420;
+const LONG_PRESS_MS = 480;
 const TAP_MOVE_TOLERANCE = 14;
 
 const NUMBER_COLORS: Record<number, string> = {
@@ -270,7 +270,7 @@ export class GameScene extends Phaser.Scene {
       fontSize: '14px',
       fontStyle: 'bold'
     });
-    const body = this.add.text(left + 12, top + 38, '【基本操作】\n・タップ: マスを開く\n・数字以外をすべて開くとクリア\n\n【flag mode】\n・ON中のタップは旗のON/OFF\n・長押しでも旗を立てられる\n\n【chord】\n・数字マスをタップ\n・周囲の旗数=数字 のとき周囲を同時に開く', {
+    const body = this.add.text(left + 12, top + 38, '【基本操作】\n・タップ: マスを開く\n・数字以外をすべて開くとクリア\n\n【flag mode】\n・ON中のタップは旗のON/OFF\n・ON中の長押しはマスを開く\n・OFF中の長押しは旗のON/OFF\n\n【chord】\n・数字マスをタップ\n・周囲の旗数=数字 のとき周囲を同時に開く', {
       color: '#d7e6ff',
       fontSize: '12px',
       lineSpacing: 4,
@@ -387,7 +387,7 @@ export class GameScene extends Phaser.Scene {
         const moved = Phaser.Math.Distance.Between(pointer.x, pointer.y, downX, downY);
         if (moved > TAP_MOVE_TOLERANCE) return;
         longPressed = true;
-        this.toggleFlag(x, y);
+        this.onCellLongPress(x, y);
       });
     });
 
@@ -409,6 +409,16 @@ export class GameScene extends Phaser.Scene {
       pressTimer?.remove(false);
       pressTimer = null;
     });
+  }
+
+  private onCellLongPress(x: number, y: number): void {
+    if (this.gameEnded) return;
+    if (this.flagMode) {
+      this.revealAction(x, y);
+      return;
+    }
+
+    this.toggleFlag(x, y);
   }
 
   private setupPinchZoom(): void {
