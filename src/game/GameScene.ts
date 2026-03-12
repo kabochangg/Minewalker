@@ -43,6 +43,7 @@ export class GameScene extends Phaser.Scene {
   private turnText!: Phaser.GameObjects.Text;
   private logText!: Phaser.GameObjects.Text;
   private flagModeText!: Phaser.GameObjects.Text;
+  private helpModal!: Phaser.GameObjects.Container;
 
   private hpBar!: Phaser.GameObjects.Rectangle;
   private oreBar!: Phaser.GameObjects.Rectangle;
@@ -56,6 +57,9 @@ export class GameScene extends Phaser.Scene {
   private panelWidth = 0;
   private topPanelH = 0;
   private bottomPanelH = 0;
+  private logAreaH = 0;
+  private safeTop = 0;
+  private safeBottom = 0;
 
   private logLines: string[] = [];
 
@@ -80,20 +84,27 @@ export class GameScene extends Phaser.Scene {
     const w = this.scale.gameSize.width;
     const h = this.scale.gameSize.height;
     const horizontalPadding = 8;
-    const gap = 8;
+    const gap = 6;
 
-    this.topPanelH = Math.max(140, Math.floor(h * 0.18));
-    this.bottomPanelH = Math.max(152, Math.floor(h * 0.19));
+    const rootStyle = getComputedStyle(document.documentElement);
+    const safeTop = Number.parseInt(rootStyle.getPropertyValue('--safe-top'), 10);
+    const safeBottom = Number.parseInt(rootStyle.getPropertyValue('--safe-bottom'), 10);
+    this.safeTop = Number.isFinite(safeTop) ? safeTop : 0;
+    this.safeBottom = Number.isFinite(safeBottom) ? safeBottom : 0;
+
+    this.topPanelH = 84;
+    this.bottomPanelH = 116;
+    this.logAreaH = 24;
 
     const maxBoardW = w - horizontalPadding * 2 - 10;
-    const maxBoardH = h - this.topPanelH - this.bottomPanelH - gap * 3;
+    const maxBoardH = h - this.safeTop - this.safeBottom - this.topPanelH - this.bottomPanelH - gap * 4;
     this.cellSize = Math.max(20, Math.floor(Math.min(maxBoardW / GRID_W, maxBoardH / GRID_H)));
 
     const boardWidth = this.cellSize * GRID_W;
     const boardHeight = this.cellSize * GRID_H;
 
     this.boardX = Math.floor((w - boardWidth) / 2);
-    this.boardY = this.topPanelH + gap;
+    this.boardY = this.safeTop + this.topPanelH + gap;
     this.bottomY = this.boardY + boardHeight + gap;
     this.panelWidth = Math.min(w - horizontalPadding * 2, boardWidth + 10);
   }
@@ -102,7 +113,7 @@ export class GameScene extends Phaser.Scene {
     const w = this.scale.gameSize.width;
 
     this.add
-      .rectangle(w / 2, this.topPanelH / 2, this.panelWidth, this.topPanelH - 4, 0x081126)
+      .rectangle(w / 2, this.safeTop + this.topPanelH / 2, this.panelWidth, this.topPanelH - 4, 0x081126)
       .setStrokeStyle(1, 0x28406d, 0.95);
 
     this.add
@@ -123,39 +134,31 @@ export class GameScene extends Phaser.Scene {
   private addTopUi(): void {
     const left = Math.floor((this.scale.gameSize.width - this.panelWidth) / 2) + 10;
     const barW = this.panelWidth - 20;
-    const rowGap = 28;
+    const rowGap = 18;
 
     const labelStyle: Phaser.Types.GameObjects.Text.TextStyle = {
       color: '#f0f6ff',
-      fontSize: '13px',
+      fontSize: '12px',
       fontStyle: 'bold'
     };
 
-    this.hpText = this.add.text(left, 10, '', labelStyle);
-    this.hpBar = this.makeStatBar(left, 28, barW, 0xf56b83);
+    const topStart = this.safeTop + 8;
+    this.hpText = this.add.text(left, topStart, '', labelStyle);
+    this.hpBar = this.makeStatBar(left, topStart + 14, barW, 0xf56b83);
 
-    this.oreText = this.add.text(left, 38, '', labelStyle);
-    this.oreBar = this.makeStatBar(left, 56, barW, 0x6ad5ef);
+    this.oreText = this.add.text(left, topStart + rowGap, '', labelStyle);
+    this.oreBar = this.makeStatBar(left, topStart + rowGap + 14, barW, 0x6ad5ef);
 
-    this.pickaxeText = this.add.text(left, 66, '', labelStyle);
-    this.pickaxeBar = this.makeStatBar(left, 84, barW, 0x7b9bff);
+    this.pickaxeText = this.add.text(left, topStart + rowGap * 2, '', labelStyle);
+    this.pickaxeBar = this.makeStatBar(left, topStart + rowGap * 2 + 14, barW, 0x7b9bff);
 
-    this.turnText = this.add.text(left, 95, '', labelStyle);
-    this.turnBar = this.makeStatBar(left, 113, barW, 0x73d284);
-
-    this.add.text(left + 92, 95, '/ 進行...', {
-      color: '#cad7f6',
-      fontSize: '13px'
-    });
-
-    [this.hpText, this.oreText, this.pickaxeText, this.turnText].forEach((t, index) => {
-      t.setY(10 + rowGap * index);
-    });
+    this.turnText = this.add.text(left, topStart + rowGap * 3, '', labelStyle);
+    this.turnBar = this.makeStatBar(left, topStart + rowGap * 3 + 14, barW, 0x73d284);
   }
 
   private makeStatBar(x: number, y: number, width: number, fillColor: number): Phaser.GameObjects.Rectangle {
-    this.add.rectangle(x, y, width, 12, 0x1b2a46).setOrigin(0).setStrokeStyle(1, 0x324f7b, 0.9);
-    return this.add.rectangle(x + 1, y + 1, width - 2, 10, fillColor).setOrigin(0);
+    this.add.rectangle(x, y, width, 8, 0x1b2a46).setOrigin(0).setStrokeStyle(1, 0x324f7b, 0.9);
+    return this.add.rectangle(x + 1, y + 1, width - 2, 6, fillColor).setOrigin(0);
   }
 
   private addBottomUi(): void {
@@ -165,11 +168,13 @@ export class GameScene extends Phaser.Scene {
 
     this.logText = this.add.text(left, this.bottomY + 8, '', {
       color: '#d8e6ff',
-      fontSize: '15px',
+      fontSize: '12px',
       wordWrap: { width: this.panelWidth - 20 }
     });
 
-    const upgradeBtn = this.makeButton(left, this.bottomY + 78, buttonWidth, 32, '強化 Ore3', () => {
+    const controlY = this.bottomY + this.logAreaH + 14;
+
+    const upgradeBtn = this.makeButton(left, controlY, buttonWidth, 32, '強化 Ore3', () => {
       if (this.gameEnded) return;
       if (this.ore < 3) {
         this.pushLog('Oreが足りない…');
@@ -181,21 +186,53 @@ export class GameScene extends Phaser.Scene {
       this.refreshUi();
     });
 
-    const flagBtn = this.makeButton(left + buttonWidth + buttonGap, this.bottomY + 78, buttonWidth, 32, '', () => {
+    const flagBtn = this.makeButton(left + buttonWidth + buttonGap, controlY, buttonWidth, 32, '', () => {
       this.flagMode = !this.flagMode;
       this.refreshUi();
     });
     this.flagModeText = flagBtn.list[1] as Phaser.GameObjects.Text;
 
-    const restartBtn = this.makeButton(left + (buttonWidth + buttonGap) * 2, this.bottomY + 78, buttonWidth, 32, 'リスタート', () => {
+    const restartBtn = this.makeButton(left + (buttonWidth + buttonGap) * 2, controlY, buttonWidth, 32, 'リスタート', () => {
       this.newRun();
     });
 
-    const helpBtn = this.makeButton(left, this.bottomY + 116, this.panelWidth - 20, 30, '説明を表示', () => {
-      this.pushLog('通常: 開く / 🚩: 旗 / 長押し: 旗 / 数字: Chord');
+    const helpBtn = this.makeButton(left + this.panelWidth - 56, this.bottomY + 6, 46, 26, '?', () => {
+      this.helpModal.setVisible(true);
     });
 
+    this.helpModal = this.createHelpModal();
+
     [upgradeBtn, flagBtn, restartBtn, helpBtn].forEach((btn) => btn.setDepth(5));
+  }
+
+  private createHelpModal(): Phaser.GameObjects.Container {
+    const w = this.scale.gameSize.width;
+    const h = this.scale.gameSize.height;
+    const modalW = Math.min(this.panelWidth, w - 20);
+    const modalH = Math.min(270, h - this.safeTop - this.safeBottom - 32);
+    const left = (w - modalW) / 2;
+    const top = (h - modalH) / 2;
+
+    const scrim = this.add.rectangle(w / 2, h / 2, w, h, 0x000000, 0.64).setInteractive();
+    const panel = this.add.rectangle(left, top, modalW, modalH, 0x0b1830).setOrigin(0).setStrokeStyle(1, 0x6a8ec8, 0.95);
+    const title = this.add.text(left + 12, top + 10, '操作説明 / 凡例', {
+      color: '#f3f7ff',
+      fontSize: '14px',
+      fontStyle: 'bold'
+    });
+    const body = this.add.text(left + 12, top + 38, '・タップ: マスを開く\n・長押し / 🚩: 旗のON/OFF\n・数字マスをタップ: 周囲を同時に開く\n\n凡例\n💣 地雷  /  🚩 旗\n耐久が0でゲームオーバー\nCore発見でクリア', {
+      color: '#d7e6ff',
+      fontSize: '12px',
+      lineSpacing: 4,
+      wordWrap: { width: modalW - 24 }
+    });
+    const closeBtn = this.makeButton(left + modalW - 68, top + modalH - 38, 56, 28, '閉じる', () => {
+      modal.setVisible(false);
+    });
+    const modal = this.add.container(0, 0, [scrim, panel, title, body, closeBtn]).setDepth(20).setVisible(false);
+
+    scrim.on('pointerdown', () => modal.setVisible(false));
+    return modal;
   }
 
   private makeButton(
@@ -211,7 +248,7 @@ export class GameScene extends Phaser.Scene {
       .setOrigin(0)
       .setStrokeStyle(1, 0x7796c7, 0.9);
     const text = this.add
-      .text(w / 2, h / 2, label, { color: '#f1f7ff', fontSize: '14px', fontStyle: 'bold' })
+      .text(w / 2, h / 2, label, { color: '#f1f7ff', fontSize: '13px', fontStyle: 'bold' })
       .setOrigin(0.5);
     const c = this.add.container(x, y, [box, text]);
     box.setInteractive({ useHandCursor: true }).on('pointerdown', () => {
@@ -516,11 +553,11 @@ export class GameScene extends Phaser.Scene {
   }
 
   private refreshUi(): void {
-    this.hpText.setText(`耐久 HP ${this.hp}/12`);
-    this.oreText.setText(`鉱石 Ore ${this.ore}`);
-    this.pickaxeText.setText(`採掘Lv Pick ${this.pickaxePower}`);
+    this.hpText.setText(`HP ${this.hp}/12`);
+    this.oreText.setText(`Ore ${this.ore}`);
+    this.pickaxeText.setText(`Pick ${this.pickaxePower}`);
     this.turnText.setText(`Turn ${this.turn}`);
-    this.flagModeText.setText(this.flagMode ? '🚩モードON' : '🚩モードOFF');
+    this.flagModeText.setText(this.flagMode ? '🚩ON' : '🚩OFF');
     this.logText.setText(`[${this.turn}] ${this.logLines.slice(-1)[0] ?? ''}`);
 
     this.hpBar.width = Math.max(2, (this.panelWidth - 22) * Phaser.Math.Clamp(this.hp / 12, 0, 1));
