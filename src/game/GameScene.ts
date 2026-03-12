@@ -12,8 +12,10 @@ interface Cell {
 
 const GRID_W = 10;
 const GRID_H = 14;
+const MINE_COUNT = 24;
 const LONG_PRESS_MS = 420;
 const TAP_MOVE_TOLERANCE = 14;
+const ENABLE_RPG_FEATURES = false;
 
 const NUMBER_COLORS: Record<number, string> = {
   1: '#4ea7ff',
@@ -38,25 +40,23 @@ export class GameScene extends Phaser.Scene {
   private cellBg: Phaser.GameObjects.Rectangle[][] = [];
   private cellText: Phaser.GameObjects.Text[][] = [];
 
-  private hp = 12;
-  private ore = 0;
-  private pickaxePower = 1;
-  private turn = 0;
   private gameEnded = false;
-  private flagMode = false;
+  private rpgHp = 12;
+  private rpgOre = 0;
+  private rpgPickaxePower = 1;
 
-  private hpText!: Phaser.GameObjects.Text;
-  private oreText!: Phaser.GameObjects.Text;
-  private pickaxeText!: Phaser.GameObjects.Text;
-  private turnText!: Phaser.GameObjects.Text;
+  private flagMode = false;
+  private gameWon = false;
+  private firstRevealDone = false;
+  private elapsedSeconds = 0;
+  private openedSafeCells = 0;
+  private timerEvent: Phaser.Time.TimerEvent | null = null;
+
+  private minesText!: Phaser.GameObjects.Text;
+  private timerText!: Phaser.GameObjects.Text;
   private logText!: Phaser.GameObjects.Text;
   private flagModeText!: Phaser.GameObjects.Text;
   private helpModal!: Phaser.GameObjects.Container;
-
-  private hpBar!: Phaser.GameObjects.Rectangle;
-  private oreBar!: Phaser.GameObjects.Rectangle;
-  private pickaxeBar!: Phaser.GameObjects.Rectangle;
-  private turnBar!: Phaser.GameObjects.Rectangle;
 
   private boardX = 0;
   private boardY = 0;
@@ -100,8 +100,8 @@ export class GameScene extends Phaser.Scene {
     this.safeTop = Number.isFinite(safeTop) ? safeTop : 0;
     this.safeBottom = Number.isFinite(safeBottom) ? safeBottom : 0;
 
-    this.topPanelH = 84;
-    this.bottomPanelH = 116;
+    this.topPanelH = 58;
+    this.bottomPanelH = 94;
     this.logAreaH = 24;
 
     const maxBoardW = w - horizontalPadding * 2 - 10;
@@ -141,32 +141,21 @@ export class GameScene extends Phaser.Scene {
 
   private addTopUi(): void {
     const left = Math.floor((this.scale.gameSize.width - this.panelWidth) / 2) + 10;
-    const barW = this.panelWidth - 20;
-    const rowGap = 18;
+    const right = left + this.panelWidth - 20;
 
-    const labelStyle: Phaser.Types.GameObjects.Text.TextStyle = {
+    this.minesText = this.add.text(left, this.safeTop + 18, '', {
       color: '#f0f6ff',
-      fontSize: '12px',
+      fontSize: '15px',
       fontStyle: 'bold'
-    };
+    });
 
-    const topStart = this.safeTop + 8;
-    this.hpText = this.add.text(left, topStart, '', labelStyle);
-    this.hpBar = this.makeStatBar(left, topStart + 14, barW, 0xf56b83);
-
-    this.oreText = this.add.text(left, topStart + rowGap, '', labelStyle);
-    this.oreBar = this.makeStatBar(left, topStart + rowGap + 14, barW, 0x6ad5ef);
-
-    this.pickaxeText = this.add.text(left, topStart + rowGap * 2, '', labelStyle);
-    this.pickaxeBar = this.makeStatBar(left, topStart + rowGap * 2 + 14, barW, 0x7b9bff);
-
-    this.turnText = this.add.text(left, topStart + rowGap * 3, '', labelStyle);
-    this.turnBar = this.makeStatBar(left, topStart + rowGap * 3 + 14, barW, 0x73d284);
-  }
-
-  private makeStatBar(x: number, y: number, width: number, fillColor: number): Phaser.GameObjects.Rectangle {
-    this.add.rectangle(x, y, width, 8, 0x1b2a46).setOrigin(0).setStrokeStyle(1, 0x324f7b, 0.9);
-    return this.add.rectangle(x + 1, y + 1, width - 2, 6, fillColor).setOrigin(0);
+    this.timerText = this.add
+      .text(right, this.safeTop + 18, '', {
+        color: '#f0f6ff',
+        fontSize: '15px',
+        fontStyle: 'bold'
+      })
+      .setOrigin(1, 0);
   }
 
   private addBottomUi(): void {
@@ -180,37 +169,25 @@ export class GameScene extends Phaser.Scene {
       wordWrap: { width: this.panelWidth - 20 }
     });
 
-    const controlY = this.bottomY + this.logAreaH + 14;
+    const controlY = this.bottomY + this.logAreaH + 10;
 
-    const upgradeBtn = this.makeButton(left, controlY, buttonWidth, 32, '強化 Ore3', () => {
-      if (this.gameEnded) return;
-      if (this.ore < 3) {
-        this.pushLog('Oreが足りない…');
-        return;
-      }
-      this.ore -= 3;
-      this.pickaxePower += 1;
-      this.pushLog(`ピッケル強化! Power ${this.pickaxePower}`);
-      this.refreshUi();
-    });
-
-    const flagBtn = this.makeButton(left + buttonWidth + buttonGap, controlY, buttonWidth, 32, '', () => {
+    const flagBtn = this.makeButton(left, controlY, buttonWidth, 32, '', () => {
       this.flagMode = !this.flagMode;
       this.refreshUi();
     });
     this.flagModeText = flagBtn.list[1] as Phaser.GameObjects.Text;
 
-    const restartBtn = this.makeButton(left + (buttonWidth + buttonGap) * 2, controlY, buttonWidth, 32, 'リスタート', () => {
+    const restartBtn = this.makeButton(left + buttonWidth + buttonGap, controlY, buttonWidth, 32, 'リスタート', () => {
       this.newRun();
     });
 
-    const helpBtn = this.makeButton(left + this.panelWidth - 56, this.bottomY + 6, 46, 26, '?', () => {
+    const helpBtn = this.makeButton(left + (buttonWidth + buttonGap) * 2, controlY, buttonWidth, 32, '?', () => {
       this.helpModal.setVisible(true);
     });
 
     this.helpModal = this.createHelpModal();
 
-    [upgradeBtn, flagBtn, restartBtn, helpBtn].forEach((btn) => btn.setDepth(5));
+    [flagBtn, restartBtn, helpBtn].forEach((btn) => btn.setDepth(5));
   }
 
   private createHelpModal(): Phaser.GameObjects.Container {
@@ -228,7 +205,7 @@ export class GameScene extends Phaser.Scene {
       fontSize: '14px',
       fontStyle: 'bold'
     });
-    const body = this.add.text(left + 12, top + 38, '・タップ: マスを開く\n・長押し / 🚩: 旗のON/OFF\n・数字マスをタップ: 周囲を同時に開く\n\n凡例\n💣 地雷  /  🚩 旗\n耐久が0でゲームオーバー\nCore発見でクリア', {
+    const body = this.add.text(left + 12, top + 38, '・タップ: マスを開く\n・長押し / 🚩: 旗のON/OFF\n・数字マスをタップ: chord(周囲を同時に開く)\n\nクリア条件\n・地雷以外をすべて開く\n\n凡例\n✹ 地雷  /  ⚑ 旗', {
       color: '#d7e6ff',
       fontSize: '12px',
       lineSpacing: 4,
@@ -272,12 +249,17 @@ export class GameScene extends Phaser.Scene {
 
   private newRun(): void {
     this.gameEnded = false;
+    this.gameWon = false;
     this.flagMode = false;
-    this.hp = 12;
-    this.ore = 0;
-    this.pickaxePower = 1;
-    this.turn = 0;
+    this.firstRevealDone = false;
+    this.elapsedSeconds = 0;
+    this.rpgHp = 12;
+    this.rpgOre = 0;
+    this.rpgPickaxePower = 1;
+    this.openedSafeCells = 0;
     this.logLines = [];
+    this.timerEvent?.remove(false);
+    this.timerEvent = null;
 
     this.grid = this.buildGrid();
     this.computeAdjacency();
@@ -313,12 +295,7 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
-    const cx = Math.floor(GRID_W / 2);
-    const cy = Math.floor(GRID_H / 2);
-    this.revealCell(cx, cy, true);
-    this.expandZeroes(cx, cy);
-
-    this.pushLog('地雷原を突破しよう。テンポ重視で掘削!');
+    this.pushLog('地雷以外のマスをすべて開こう。');
     this.refreshUi();
     this.redrawAll();
   }
@@ -381,7 +358,7 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    this.mineAction(x, y);
+    this.revealAction(x, y);
   }
 
   private tryChord(x: number, y: number): void {
@@ -392,13 +369,11 @@ export class GameScene extends Phaser.Scene {
     const flagCount = around.filter(([nx, ny]) => this.grid[ny][nx].flagged).length;
     if (flagCount !== cell.adjacentMines) return;
 
-    this.turn += 1;
     let opened = 0;
     for (const [nx, ny] of around) {
       const n = this.grid[ny][nx];
       if (n.hidden && !n.flagged) {
-        this.revealCell(nx, ny);
-        opened += 1;
+        opened += this.revealCell(nx, ny);
       }
     }
 
@@ -411,6 +386,39 @@ export class GameScene extends Phaser.Scene {
   }
 
   private buildGrid(): Cell[][] {
+    if (ENABLE_RPG_FEATURES) {
+      return this.buildRpgGrid();
+    }
+
+    const grid: Cell[][] = [];
+    for (let y = 0; y < GRID_H; y += 1) {
+      grid[y] = [];
+      for (let x = 0; x < GRID_W; x += 1) {
+        grid[y][x] = {
+          hidden: true,
+          flagged: false,
+          revealed: false,
+          kind: 'safe',
+          adjacentMines: 0
+        };
+      }
+    }
+
+    const minePositions = new Set<number>();
+    while (minePositions.size < MINE_COUNT) {
+      minePositions.add(Phaser.Math.Between(0, GRID_W * GRID_H - 1));
+    }
+
+    for (const idx of minePositions) {
+      const x = idx % GRID_W;
+      const y = Math.floor(idx / GRID_W);
+      grid[y][x].kind = 'mine';
+    }
+
+    return grid;
+  }
+
+  private buildRpgGrid(): Cell[][] {
     const grid: Cell[][] = [];
     for (let y = 0; y < GRID_H; y += 1) {
       grid[y] = [];
@@ -472,42 +480,29 @@ export class GameScene extends Phaser.Scene {
     if (!cell.hidden || cell.revealed) return;
     cell.flagged = !cell.flagged;
     this.redrawCell(x, y);
+    this.refreshUi();
   }
 
-  private mineAction(x: number, y: number): void {
+  private revealAction(x: number, y: number): void {
     const target = this.grid[y][x];
     if (!target.hidden || target.flagged) return;
 
-    const adjacentRevealed = this.neighbors(x, y).some(([nx, ny]) => this.grid[ny][nx].revealed);
-    if (!adjacentRevealed) {
-      this.pushLog('隣接する壁しか壊せない。');
-      return;
+    if (!this.firstRevealDone) {
+      this.ensureFirstRevealIsSafe(x, y);
+      this.startTimer();
+      this.firstRevealDone = true;
     }
 
-    this.turn += 1;
-
-    if (this.pickaxePower >= 2) {
-      for (let dy = -1; dy <= 1; dy += 1) {
-        for (let dx = -1; dx <= 1; dx += 1) {
-          if (Math.abs(dx) + Math.abs(dy) > 1) continue;
-          const tx = x + dx;
-          const ty = y + dy;
-          if (!this.inRange(tx, ty)) continue;
-          if (!this.grid[ty][tx].hidden || this.grid[ty][tx].flagged) continue;
-          this.revealCell(tx, ty);
-        }
-      }
-    } else {
-      this.revealCell(x, y);
-    }
+    this.revealCell(x, y);
 
     this.refreshUi();
     this.checkEndState();
   }
 
-  private revealCell(x: number, y: number, forceSafe = false): void {
+  private revealCell(x: number, y: number, forceSafe = false): number {
+    if (this.gameEnded && !forceSafe) return 0;
     const cell = this.grid[y][x];
-    if (!cell.hidden || cell.flagged) return;
+    if (!cell.hidden || cell.flagged) return 0;
 
     cell.hidden = false;
     cell.revealed = true;
@@ -517,19 +512,21 @@ export class GameScene extends Phaser.Scene {
     }
 
     if (cell.kind === 'mine') {
-      this.hp -= 3;
-      this.pushLog('💥 地雷! HP -3');
+      this.pushLog('💥 地雷! ゲームオーバー');
+      this.gameEnded = true;
+      this.gameWon = false;
+      this.revealAllMines();
       this.redrawCell(x, y);
-      return;
+      return 1;
     }
 
     if (cell.kind === 'ore') {
-      this.ore += 1;
+      this.rpgOre += 1;
       this.pushLog('⛏️ 鉱石を入手 +1');
     }
 
     if (cell.kind === 'heal') {
-      this.hp = Math.min(12, this.hp + 2);
+      this.rpgHp = Math.min(12, this.rpgHp + 2);
       this.pushLog('🧪 回復 +2');
     }
 
@@ -537,16 +534,18 @@ export class GameScene extends Phaser.Scene {
       this.pushLog('🌟 Coreを発見! クリア!');
       this.gameEnded = true;
       this.redrawCell(x, y);
-      return;
+      return 1;
     }
 
     if (cell.kind === 'safe') {
+      this.openedSafeCells += 1;
       if (cell.adjacentMines === 0) {
         this.expandZeroes(x, y);
       }
     }
 
     this.redrawCell(x, y);
+    return 1;
   }
 
   private expandZeroes(startX: number, startY: number): void {
@@ -567,8 +566,9 @@ export class GameScene extends Phaser.Scene {
         if (n.hidden && !n.flagged && n.kind !== 'mine' && n.kind !== 'core') {
           n.hidden = false;
           n.revealed = true;
-          if (n.kind === 'ore') this.ore += 1;
-          if (n.kind === 'heal') this.hp = Math.min(12, this.hp + 1);
+          if (n.kind === 'safe') {
+            this.openedSafeCells += 1;
+          }
           if (n.kind === 'safe' && n.adjacentMines === 0) {
             queue.push([nx, ny]);
           }
@@ -579,25 +579,29 @@ export class GameScene extends Phaser.Scene {
   }
 
   private checkEndState(): void {
-    if (this.hp <= 0) {
-      this.hp = 0;
+    if (this.gameEnded) {
+      this.timerEvent?.remove(false);
+      this.timerEvent = null;
+      return;
+    }
+
+    const totalSafeCells = GRID_W * GRID_H - MINE_COUNT;
+    if (this.openedSafeCells >= totalSafeCells) {
       this.gameEnded = true;
-      this.pushLog('☠️ HPが尽きた。ゲームオーバー');
+      this.gameWon = true;
+      this.pushLog('🎉 クリア! 安全マスをすべて開いた');
+      this.timerEvent?.remove(false);
+      this.timerEvent = null;
     }
   }
 
   private refreshUi(): void {
-    this.hpText.setText(`HP ${this.hp}/12`);
-    this.oreText.setText(`Ore ${this.ore}`);
-    this.pickaxeText.setText(`Pick ${this.pickaxePower}`);
-    this.turnText.setText(`Turn ${this.turn}`);
+    const flaggedCount = this.grid.flat().filter((cell) => cell.flagged).length;
+    this.minesText.setText(`💣 ${MINE_COUNT}  ⚑ ${flaggedCount}`);
+    this.timerText.setText(`⏱ ${this.formatTime(this.elapsedSeconds)}`);
     this.flagModeText.setText(this.flagMode ? '🚩ON' : '🚩OFF');
-    this.logText.setText(`[${this.turn}] ${this.logLines.slice(-1)[0] ?? ''}`);
-
-    this.hpBar.width = Math.max(2, (this.panelWidth - 22) * Phaser.Math.Clamp(this.hp / 12, 0, 1));
-    this.oreBar.width = Math.max(2, (this.panelWidth - 22) * Phaser.Math.Clamp(this.ore / 12, 0, 1));
-    this.pickaxeBar.width = Math.max(2, (this.panelWidth - 22) * Phaser.Math.Clamp(this.pickaxePower / 6, 0, 1));
-    this.turnBar.width = Math.max(2, (this.panelWidth - 22) * Phaser.Math.Clamp(this.turn / 30, 0, 1));
+    const status = this.gameEnded ? (this.gameWon ? 'CLEAR' : 'LOSE') : 'PLAY';
+    this.logText.setText(`[${status}] ${this.logLines.slice(-1)[0] ?? ''}`);
   }
 
   private redrawAll(): void {
@@ -659,6 +663,55 @@ export class GameScene extends Phaser.Scene {
   private pushLog(message: string): void {
     this.logLines.push(message);
     this.refreshUi();
+  }
+
+  private ensureFirstRevealIsSafe(x: number, y: number): void {
+    if (this.grid[y][x].kind !== 'mine') return;
+
+    for (let ty = 0; ty < GRID_H; ty += 1) {
+      for (let tx = 0; tx < GRID_W; tx += 1) {
+        if ((tx !== x || ty !== y) && this.grid[ty][tx].kind === 'safe') {
+          this.grid[ty][tx].kind = 'mine';
+          this.grid[y][x].kind = 'safe';
+          this.computeAdjacency();
+          return;
+        }
+      }
+    }
+  }
+
+  private revealAllMines(): void {
+    for (let y = 0; y < GRID_H; y += 1) {
+      for (let x = 0; x < GRID_W; x += 1) {
+        const cell = this.grid[y][x];
+        if (cell.kind === 'mine') {
+          cell.hidden = false;
+          cell.revealed = true;
+          this.redrawCell(x, y);
+        }
+      }
+    }
+  }
+
+  private startTimer(): void {
+    this.timerEvent?.remove(false);
+    this.timerEvent = this.time.addEvent({
+      delay: 1000,
+      loop: true,
+      callback: () => {
+        if (this.gameEnded) return;
+        this.elapsedSeconds += 1;
+        this.refreshUi();
+      }
+    });
+  }
+
+  private formatTime(totalSeconds: number): string {
+    const m = Math.floor(totalSeconds / 60)
+      .toString()
+      .padStart(2, '0');
+    const s = (totalSeconds % 60).toString().padStart(2, '0');
+    return `${m}:${s}`;
   }
 
   private neighbors(x: number, y: number): Array<[number, number]> {
