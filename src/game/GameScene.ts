@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 
-type CellKind = 'safe' | 'mine' | 'ore' | 'heal' | 'core';
+type CellKind = 'safe' | 'mine';
 
 interface Cell {
   hidden: boolean;
@@ -15,7 +15,6 @@ const GRID_H = 14;
 const MINE_COUNT = 24;
 const LONG_PRESS_MS = 420;
 const TAP_MOVE_TOLERANCE = 14;
-const ENABLE_RPG_FEATURES = false;
 
 const NUMBER_COLORS: Record<number, string> = {
   1: '#4ea7ff',
@@ -28,12 +27,7 @@ const NUMBER_COLORS: Record<number, string> = {
   8: '#4f4f4f'
 };
 
-const CELL_SYMBOL: Record<Exclude<CellKind, 'safe'>, string> = {
-  mine: '✹',
-  ore: '◆',
-  heal: '+',
-  core: '◎'
-};
+const CELL_SYMBOL: Record<Exclude<CellKind, 'safe'>, string> = { mine: '✹' };
 
 export class GameScene extends Phaser.Scene {
   private grid: Cell[][] = [];
@@ -41,10 +35,6 @@ export class GameScene extends Phaser.Scene {
   private cellText: Phaser.GameObjects.Text[][] = [];
 
   private gameEnded = false;
-  private rpgHp = 12;
-  private rpgOre = 0;
-  private rpgPickaxePower = 1;
-
   private flagMode = false;
   private gameWon = false;
   private firstRevealDone = false;
@@ -54,7 +44,6 @@ export class GameScene extends Phaser.Scene {
 
   private minesText!: Phaser.GameObjects.Text;
   private timerText!: Phaser.GameObjects.Text;
-  private logText!: Phaser.GameObjects.Text;
   private flagModeText!: Phaser.GameObjects.Text;
   private helpModal!: Phaser.GameObjects.Container;
 
@@ -65,11 +54,8 @@ export class GameScene extends Phaser.Scene {
   private panelWidth = 0;
   private topPanelH = 0;
   private bottomPanelH = 0;
-  private logAreaH = 0;
   private safeTop = 0;
   private safeBottom = 0;
-
-  private logLines: string[] = [];
 
   constructor() {
     super('GameScene');
@@ -101,8 +87,7 @@ export class GameScene extends Phaser.Scene {
     this.safeBottom = Number.isFinite(safeBottom) ? safeBottom : 0;
 
     this.topPanelH = 58;
-    this.bottomPanelH = 94;
-    this.logAreaH = 24;
+    this.bottomPanelH = 52;
 
     const maxBoardW = w - horizontalPadding * 2 - 10;
     const maxBoardH = h - this.safeTop - this.safeBottom - this.topPanelH - this.bottomPanelH - gap * 4;
@@ -162,14 +147,7 @@ export class GameScene extends Phaser.Scene {
     const left = Math.floor((this.scale.gameSize.width - this.panelWidth) / 2) + 10;
     const buttonGap = 6;
     const buttonWidth = Math.floor((this.panelWidth - 20 - buttonGap * 2) / 3);
-
-    this.logText = this.add.text(left, this.bottomY + 8, '', {
-      color: '#d8e6ff',
-      fontSize: '12px',
-      wordWrap: { width: this.panelWidth - 20 }
-    });
-
-    const controlY = this.bottomY + this.logAreaH + 10;
+    const controlY = this.bottomY + 10;
 
     const flagBtn = this.makeButton(left, controlY, buttonWidth, 32, '', () => {
       this.flagMode = !this.flagMode;
@@ -200,12 +178,12 @@ export class GameScene extends Phaser.Scene {
 
     const scrim = this.add.rectangle(w / 2, h / 2, w, h, 0x000000, 0.64).setInteractive();
     const panel = this.add.rectangle(left, top, modalW, modalH, 0x0b1830).setOrigin(0).setStrokeStyle(1, 0x6a8ec8, 0.95);
-    const title = this.add.text(left + 12, top + 10, '操作説明 / 凡例', {
+    const title = this.add.text(left + 12, top + 10, '遊び方', {
       color: '#f3f7ff',
       fontSize: '14px',
       fontStyle: 'bold'
     });
-    const body = this.add.text(left + 12, top + 38, '・タップ: マスを開く\n・長押し / 🚩: 旗のON/OFF\n・数字マスをタップ: chord(周囲を同時に開く)\n\nクリア条件\n・地雷以外をすべて開く\n\n凡例\n✹ 地雷  /  ⚑ 旗', {
+    const body = this.add.text(left + 12, top + 38, '【基本操作】\n・タップ: マスを開く\n・数字以外をすべて開くとクリア\n\n【flag mode】\n・ON中のタップは旗のON/OFF\n・長押しでも旗を立てられる\n\n【chord】\n・数字マスをタップ\n・周囲の旗数=数字 のとき周囲を同時に開く', {
       color: '#d7e6ff',
       fontSize: '12px',
       lineSpacing: 4,
@@ -253,11 +231,7 @@ export class GameScene extends Phaser.Scene {
     this.flagMode = false;
     this.firstRevealDone = false;
     this.elapsedSeconds = 0;
-    this.rpgHp = 12;
-    this.rpgOre = 0;
-    this.rpgPickaxePower = 1;
     this.openedSafeCells = 0;
-    this.logLines = [];
     this.timerEvent?.remove(false);
     this.timerEvent = null;
 
@@ -295,7 +269,6 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
-    this.pushLog('地雷以外のマスをすべて開こう。');
     this.refreshUi();
     this.redrawAll();
   }
@@ -386,10 +359,6 @@ export class GameScene extends Phaser.Scene {
   }
 
   private buildGrid(): Cell[][] {
-    if (ENABLE_RPG_FEATURES) {
-      return this.buildRpgGrid();
-    }
-
     const grid: Cell[][] = [];
     for (let y = 0; y < GRID_H; y += 1) {
       grid[y] = [];
@@ -416,54 +385,6 @@ export class GameScene extends Phaser.Scene {
     }
 
     return grid;
-  }
-
-  private buildRpgGrid(): Cell[][] {
-    const grid: Cell[][] = [];
-    for (let y = 0; y < GRID_H; y += 1) {
-      grid[y] = [];
-      for (let x = 0; x < GRID_W; x += 1) {
-        grid[y][x] = {
-          hidden: true,
-          flagged: false,
-          revealed: false,
-          kind: this.rollKind(),
-          adjacentMines: 0
-        };
-      }
-    }
-
-    const cx = Math.floor(GRID_W / 2);
-    const cy = Math.floor(GRID_H / 2);
-    grid[cy][cx] = {
-      hidden: false,
-      flagged: false,
-      revealed: true,
-      kind: 'safe',
-      adjacentMines: 0
-    };
-
-    for (const [nx, ny] of this.neighbors(cx, cy)) {
-      if (grid[ny][nx].kind === 'mine' || grid[ny][nx].kind === 'core') {
-        grid[ny][nx].kind = 'safe';
-      }
-    }
-
-    const coreX = Phaser.Math.Between(0, GRID_W - 1);
-    const coreY = Phaser.Math.Between(0, GRID_H - 1);
-    if (coreX !== cx || coreY !== cy) {
-      grid[coreY][coreX].kind = 'core';
-    }
-
-    return grid;
-  }
-
-  private rollKind(): CellKind {
-    const r = Math.random();
-    if (r < 0.14) return 'mine';
-    if (r < 0.24) return 'ore';
-    if (r < 0.3) return 'heal';
-    return 'safe';
   }
 
   private computeAdjacency(): void {
@@ -512,27 +433,9 @@ export class GameScene extends Phaser.Scene {
     }
 
     if (cell.kind === 'mine') {
-      this.pushLog('💥 地雷! ゲームオーバー');
       this.gameEnded = true;
       this.gameWon = false;
       this.revealAllMines();
-      this.redrawCell(x, y);
-      return 1;
-    }
-
-    if (cell.kind === 'ore') {
-      this.rpgOre += 1;
-      this.pushLog('⛏️ 鉱石を入手 +1');
-    }
-
-    if (cell.kind === 'heal') {
-      this.rpgHp = Math.min(12, this.rpgHp + 2);
-      this.pushLog('🧪 回復 +2');
-    }
-
-    if (cell.kind === 'core') {
-      this.pushLog('🌟 Coreを発見! クリア!');
-      this.gameEnded = true;
       this.redrawCell(x, y);
       return 1;
     }
@@ -563,7 +466,7 @@ export class GameScene extends Phaser.Scene {
 
       for (const [nx, ny] of this.neighbors(x, y)) {
         const n = this.grid[ny][nx];
-        if (n.hidden && !n.flagged && n.kind !== 'mine' && n.kind !== 'core') {
+        if (n.hidden && !n.flagged && n.kind !== 'mine') {
           n.hidden = false;
           n.revealed = true;
           if (n.kind === 'safe') {
@@ -589,7 +492,6 @@ export class GameScene extends Phaser.Scene {
     if (this.openedSafeCells >= totalSafeCells) {
       this.gameEnded = true;
       this.gameWon = true;
-      this.pushLog('🎉 クリア! 安全マスをすべて開いた');
       this.timerEvent?.remove(false);
       this.timerEvent = null;
     }
@@ -597,11 +499,10 @@ export class GameScene extends Phaser.Scene {
 
   private refreshUi(): void {
     const flaggedCount = this.grid.flat().filter((cell) => cell.flagged).length;
-    this.minesText.setText(`💣 ${MINE_COUNT}  ⚑ ${flaggedCount}`);
+    const remainingMines = MINE_COUNT - flaggedCount;
+    this.minesText.setText(`🚩 ${Math.max(remainingMines, 0)}`);
     this.timerText.setText(`⏱ ${this.formatTime(this.elapsedSeconds)}`);
     this.flagModeText.setText(this.flagMode ? '🚩ON' : '🚩OFF');
-    const status = this.gameEnded ? (this.gameWon ? 'CLEAR' : 'LOSE') : 'PLAY';
-    this.logText.setText(`[${status}] ${this.logLines.slice(-1)[0] ?? ''}`);
   }
 
   private redrawAll(): void {
@@ -632,24 +533,6 @@ export class GameScene extends Phaser.Scene {
         txt.setColor('#fff5f6');
         txt.setText(CELL_SYMBOL.mine);
         break;
-      case 'ore':
-        bg.setFillStyle(0x2f7b89);
-        bg.setStrokeStyle(1, 0x65b6c5, 1);
-        txt.setColor('#defbff');
-        txt.setText(CELL_SYMBOL.ore);
-        break;
-      case 'heal':
-        bg.setFillStyle(0x3c6f55);
-        bg.setStrokeStyle(1, 0x7db592, 1);
-        txt.setColor('#e9fff1');
-        txt.setText(CELL_SYMBOL.heal);
-        break;
-      case 'core':
-        bg.setFillStyle(0x7a5cad);
-        bg.setStrokeStyle(1, 0xbaa1e0, 1);
-        txt.setColor('#fbf4ff');
-        txt.setText(CELL_SYMBOL.core);
-        break;
       case 'safe':
       default:
         bg.setFillStyle(0xdce4ef);
@@ -658,11 +541,6 @@ export class GameScene extends Phaser.Scene {
         txt.setText(cell.adjacentMines > 0 ? String(cell.adjacentMines) : '');
         break;
     }
-  }
-
-  private pushLog(message: string): void {
-    this.logLines.push(message);
-    this.refreshUi();
   }
 
   private ensureFirstRevealIsSafe(x: number, y: number): void {
