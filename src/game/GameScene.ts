@@ -19,30 +19,6 @@ interface DifficultyPreset {
   mineCount: number;
 }
 
-interface BoardLayout {
-  boardX: number;
-  boardY: number;
-  cellSize: number;
-  bottomY: number;
-  panelWidth: number;
-  topPanelH: number;
-  bottomPanelH: number;
-  topPanelY: number;
-  safeTop: number;
-  safeBottom: number;
-}
-
-interface BoardTouchState {
-  pointerId: number;
-  downAt: number;
-  downX: number;
-  downY: number;
-  cellX: number;
-  cellY: number;
-  longPressed: boolean;
-  timer: Phaser.Time.TimerEvent | null;
-}
-
 const DIFFICULTY_PRESETS: Record<DifficultyKey, DifficultyPreset> = {
   beginner: { label: '初級', width: 9, height: 9, mineCount: 10 },
   intermediate: { label: '中級', width: 16, height: 16, mineCount: 40 },
@@ -51,7 +27,7 @@ const DIFFICULTY_PRESETS: Record<DifficultyKey, DifficultyPreset> = {
 
 const DIFFICULTY_ORDER: DifficultyKey[] = ['beginner', 'intermediate', 'advanced'];
 const DEFAULT_DIFFICULTY: DifficultyKey = 'beginner';
-const LONG_PRESS_MS = 480;
+const LONG_PRESS_MS = 420;
 const TAP_MOVE_TOLERANCE = 14;
 
 const NUMBER_COLORS: Record<number, string> = {
@@ -106,26 +82,6 @@ export class GameScene extends Phaser.Scene {
   private safeTop = 0;
   private safeBottom = 0;
 
-  private boardLayer!: Phaser.GameObjects.Container;
-  private boardInputZone!: Phaser.GameObjects.Zone;
-  private boardBaseX = 0;
-  private boardBaseY = 0;
-  private boardScale = 1;
-  private boardOffsetX = 0;
-  private boardOffsetY = 0;
-  private readonly minBoardScale = 1;
-  private readonly maxBoardScale = 2.2;
-
-  private pinchDistance = 0;
-  private pinchScale = 1;
-  private pinchCenterX = 0;
-  private pinchCenterY = 0;
-  private pinchOffsetX = 0;
-  private pinchOffsetY = 0;
-  private isPinching = false;
-  private suppressTap = false;
-  private boardTouch: BoardTouchState | null = null;
-
   constructor() {
     super('GameScene');
   }
@@ -141,43 +97,16 @@ export class GameScene extends Phaser.Scene {
     this.drawFrames();
     this.addTopUi();
     this.addBottomUi();
-    this.initBoardLayer();
     this.newRun();
-    this.setupPinchZoom();
 
     this.scale.on('resize', () => {
       this.scene.restart();
     });
   }
 
-  private initBoardLayer(): void {
-    this.boardBaseX = this.boardX;
-    this.boardBaseY = this.boardY;
-    this.boardScale = 1;
-    this.boardOffsetX = 0;
-    this.boardOffsetY = 0;
-    this.boardLayer = this.add.container(this.boardBaseX, this.boardBaseY);
-    this.boardLayer.setDepth(1);
-    this.boardInputZone = this.add.zone(this.boardBaseX, this.boardBaseY, 10, 10).setOrigin(0).setDepth(2);
-    this.boardInputZone.setInteractive();
-    this.bindBoardPointer();
-  }
-
   private computeLayout(): void {
-    const layout = this.calculateBoardLayout(this.scale.gameSize.width, this.scale.gameSize.height, this.currentDifficulty);
-    this.boardX = layout.boardX;
-    this.boardY = layout.boardY;
-    this.cellSize = layout.cellSize;
-    this.bottomY = layout.bottomY;
-    this.panelWidth = layout.panelWidth;
-    this.topPanelH = layout.topPanelH;
-    this.bottomPanelH = layout.bottomPanelH;
-    this.topPanelY = layout.topPanelY;
-    this.safeTop = layout.safeTop;
-    this.safeBottom = layout.safeBottom;
-  }
-
-  private calculateBoardLayout(w: number, h: number, difficulty: DifficultyPreset): BoardLayout {
+    const w = this.scale.gameSize.width;
+    const h = this.scale.gameSize.height;
     const horizontalPadding = 8;
     const gap = 6;
     const minCellSize = 10;
@@ -185,46 +114,33 @@ export class GameScene extends Phaser.Scene {
     const rootStyle = getComputedStyle(document.documentElement);
     const safeTop = Number.parseFloat(rootStyle.getPropertyValue('--safe-top'));
     const safeBottom = Number.parseFloat(rootStyle.getPropertyValue('--safe-bottom'));
-    const resolvedSafeTop = Number.isFinite(safeTop) ? safeTop : 0;
-    const resolvedSafeBottom = Number.isFinite(safeBottom) ? safeBottom : 0;
+    this.safeTop = Number.isFinite(safeTop) ? safeTop : 0;
+    this.safeBottom = Number.isFinite(safeBottom) ? safeBottom : 0;
 
-    const topPanelH = Phaser.Math.Clamp(Math.floor(h * 0.15), 74, 92);
-    const bottomPanelH = Phaser.Math.Clamp(Math.floor(h * 0.095), 48, 56);
-    const topPanelY = resolvedSafeTop + 2;
+    this.topPanelH = Phaser.Math.Clamp(Math.floor(h * 0.15), 74, 92);
+    this.bottomPanelH = Phaser.Math.Clamp(Math.floor(h * 0.095), 48, 56);
+    this.topPanelY = this.safeTop + 2;
 
     const maxBoardW = Math.max(60, w - horizontalPadding * 2 - 10);
-    const maxBoardH = Math.max(60, h - resolvedSafeTop - resolvedSafeBottom - topPanelH - bottomPanelH - gap * 3 - 4);
-    const { width, height } = difficulty;
-    const cellSize = Math.max(minCellSize, Math.floor(Math.min(maxBoardW / width, maxBoardH / height)));
+    const maxBoardH = Math.max(60, h - this.safeTop - this.safeBottom - this.topPanelH - this.bottomPanelH - gap * 3 - 4);
+    const { width, height } = this.currentDifficulty;
+    this.cellSize = Math.max(minCellSize, Math.floor(Math.min(maxBoardW / width, maxBoardH / height)));
 
-    const boardWidth = cellSize * width;
-    const boardHeight = cellSize * height;
+    const boardWidth = this.cellSize * width;
+    const boardHeight = this.cellSize * height;
 
-    const boardX = Math.floor((w - boardWidth) / 2);
-    let boardY = topPanelY + topPanelH + gap;
-    let bottomY = boardY + boardHeight + gap;
+    this.boardX = Math.floor((w - boardWidth) / 2);
+    this.boardY = this.topPanelY + this.topPanelH + gap;
+    this.bottomY = this.boardY + boardHeight + gap;
 
-    const maxBottomTop = h - resolvedSafeBottom - bottomPanelH;
-    if (bottomY > maxBottomTop) {
-      const overflow = bottomY - maxBottomTop;
-      boardY = Math.max(topPanelY + topPanelH + 2, boardY - overflow);
-      bottomY = boardY + boardHeight + gap;
+    const maxBottomTop = h - this.safeBottom - this.bottomPanelH;
+    if (this.bottomY > maxBottomTop) {
+      const overflow = this.bottomY - maxBottomTop;
+      this.boardY = Math.max(this.topPanelY + this.topPanelH + 2, this.boardY - overflow);
+      this.bottomY = this.boardY + boardHeight + gap;
     }
 
-    const panelWidth = Math.min(w - horizontalPadding * 2, boardWidth + 10);
-
-    return {
-      boardX,
-      boardY,
-      cellSize,
-      bottomY,
-      panelWidth,
-      topPanelH,
-      bottomPanelH,
-      topPanelY,
-      safeTop: resolvedSafeTop,
-      safeBottom: resolvedSafeBottom
-    };
+    this.panelWidth = Math.min(w - horizontalPadding * 2, boardWidth + 10);
   }
 
   private drawFrames(): void {
@@ -335,7 +251,7 @@ export class GameScene extends Phaser.Scene {
       fontSize: '14px',
       fontStyle: 'bold'
     });
-    const body = this.add.text(left + 12, top + 38, '【基本操作】\n・タップ: マスを開く\n・数字以外をすべて開くとクリア\n\n【flag mode】\n・ON中のタップは旗のON/OFF\n・ON中の長押しはマスを開く\n・OFF中の長押しは旗のON/OFF\n\n【chord】\n・数字マスをタップ\n・周囲の旗数=数字 のとき周囲を同時に開く', {
+    const body = this.add.text(left + 12, top + 38, '【基本操作】\n・タップ: マスを開く\n・数字以外をすべて開くとクリア\n\n【flag mode】\n・ON中のタップは旗のON/OFF\n・長押しでも旗を立てられる\n\n【chord】\n・数字マスをタップ\n・周囲の旗数=数字 のとき周囲を同時に開く', {
       color: '#d7e6ff',
       fontSize: '12px',
       lineSpacing: 4,
@@ -391,10 +307,8 @@ export class GameScene extends Phaser.Scene {
     this.grid = this.buildGrid();
     this.computeAdjacency();
 
-    this.boardTouch?.timer?.remove(false);
-    this.boardTouch = null;
-
-    this.boardLayer.removeAll(true);
+    this.cellBg.flat().forEach((r) => r.destroy());
+    this.cellText.flat().forEach((t) => t.destroy());
     this.cellBg = [];
     this.cellText = [];
 
@@ -404,8 +318,8 @@ export class GameScene extends Phaser.Scene {
       this.cellBg[y] = [];
       this.cellText[y] = [];
       for (let x = 0; x < width; x += 1) {
-        const px = x * this.cellSize;
-        const py = y * this.cellSize;
+        const px = this.boardX + x * this.cellSize;
+        const py = this.boardY + y * this.cellSize;
         const rect = this.add
           .rectangle(px, py, this.cellSize - 2, this.cellSize - 2, 0x4a556f)
           .setOrigin(0)
@@ -418,7 +332,8 @@ export class GameScene extends Phaser.Scene {
           })
           .setOrigin(0.5);
 
-        this.boardLayer.add([rect, txt]);
+        const zone = this.add.zone(px, py, this.cellSize - 2, this.cellSize - 2).setOrigin(0);
+        this.bindCellPointer(zone, x, y);
 
         this.cellBg[y][x] = rect;
         this.cellText[y][x] = txt;
@@ -427,202 +342,50 @@ export class GameScene extends Phaser.Scene {
 
     this.refreshUi();
     this.redrawAll();
-    this.updateBoardInputArea();
-    this.applyBoardTransform();
   }
 
-  private bindBoardPointer(): void {
-    this.boardInputZone.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-      if (this.hasMultiTouch()) return;
-      if (this.suppressTap || this.isPinching) return;
+  private bindCellPointer(zone: Phaser.GameObjects.Zone, x: number, y: number): void {
+    zone.setInteractive();
+    let downAt = 0;
+    let downX = 0;
+    let downY = 0;
+    let longPressed = false;
+    let pressTimer: Phaser.Time.TimerEvent | null = null;
 
-      const hit = this.screenToCell(pointer.x, pointer.y);
-      if (!hit) return;
+    zone.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+      downAt = this.time.now;
+      downX = pointer.x;
+      downY = pointer.y;
+      longPressed = false;
 
-      this.boardTouch?.timer?.remove(false);
-      const state: BoardTouchState = {
-        pointerId: pointer.id,
-        downAt: this.time.now,
-        downX: pointer.x,
-        downY: pointer.y,
-        cellX: hit.x,
-        cellY: hit.y,
-        longPressed: false,
-        timer: null
-      };
-
-      state.timer = this.time.delayedCall(LONG_PRESS_MS, () => {
+      pressTimer?.remove(false);
+      pressTimer = this.time.delayedCall(LONG_PRESS_MS, () => {
         if (this.gameEnded) return;
-        if (!this.boardTouch || this.boardTouch.pointerId !== pointer.id) return;
-        if (this.hasMultiTouch() || !pointer.isDown) return;
-        const moved = Phaser.Math.Distance.Between(pointer.x, pointer.y, state.downX, state.downY);
+        if (!pointer.isDown) return;
+        const moved = Phaser.Math.Distance.Between(pointer.x, pointer.y, downX, downY);
         if (moved > TAP_MOVE_TOLERANCE) return;
-
-        const latestHit = this.screenToCell(pointer.x, pointer.y);
-        if (!latestHit || latestHit.x !== state.cellX || latestHit.y !== state.cellY) return;
-
-        state.longPressed = true;
-        this.onCellLongPress(state.cellX, state.cellY);
+        longPressed = true;
+        this.toggleFlag(x, y);
       });
-
-      this.boardTouch = state;
     });
 
-    this.input.on('pointerup', (pointer: Phaser.Input.Pointer) => {
-      const state = this.boardTouch;
-      if (!state || state.pointerId !== pointer.id) return;
+    zone.on('pointerup', (pointer: Phaser.Input.Pointer) => {
+      if (this.gameEnded) return;
+      pressTimer?.remove(false);
+      pressTimer = null;
 
-      state.timer?.remove(false);
-      this.boardTouch = null;
-      if (this.gameEnded || this.suppressTap || this.isPinching) return;
-
-      const moved = Phaser.Math.Distance.Between(pointer.x, pointer.y, state.downX, state.downY);
+      const moved = Phaser.Math.Distance.Between(pointer.x, pointer.y, downX, downY);
       if (moved > TAP_MOVE_TOLERANCE) return;
 
-      const held = this.time.now - state.downAt;
-      if (state.longPressed || held >= LONG_PRESS_MS) return;
-
-      const hit = this.screenToCell(pointer.x, pointer.y);
-      if (!hit || hit.x !== state.cellX || hit.y !== state.cellY) return;
-      this.onCellTap(state.cellX, state.cellY);
+      const held = this.time.now - downAt;
+      if (longPressed || held >= LONG_PRESS_MS) return;
+      this.onCellTap(x, y);
     });
 
-    this.input.on('pointerupoutside', (pointer: Phaser.Input.Pointer) => {
-      if (!this.boardTouch || this.boardTouch.pointerId !== pointer.id) return;
-      this.boardTouch.timer?.remove(false);
-      this.boardTouch = null;
+    zone.on('pointerout', () => {
+      pressTimer?.remove(false);
+      pressTimer = null;
     });
-  }
-
-  private onCellLongPress(x: number, y: number): void {
-    if (this.gameEnded) return;
-    if (this.flagMode) {
-      this.revealAction(x, y);
-      return;
-    }
-
-    this.toggleFlag(x, y);
-  }
-
-  private setupPinchZoom(): void {
-    this.input.addPointer(2);
-
-    this.input.on('pointerdown', () => {
-      if (this.hasMultiTouch()) {
-        this.startPinch();
-      }
-    });
-
-    this.input.on('pointermove', () => {
-      if (this.isPinching) {
-        this.updatePinch();
-      }
-    });
-
-    this.input.on('pointerup', () => {
-      if (this.isPinching && !this.hasMultiTouch()) {
-        this.isPinching = false;
-        this.suppressTap = true;
-      }
-      if (!this.hasActiveTouch()) {
-        this.suppressTap = false;
-      }
-    });
-  }
-
-  private hasActiveTouch(): boolean {
-    return this.input.manager.pointers.some((pointer) => pointer.isDown);
-  }
-
-  private hasMultiTouch(): boolean {
-    let downCount = 0;
-    for (const pointer of this.input.manager.pointers) {
-      if (!pointer.isDown) continue;
-      downCount += 1;
-      if (downCount >= 2) return true;
-    }
-    return false;
-  }
-
-  private getTwoActivePointers(): [Phaser.Input.Pointer, Phaser.Input.Pointer] | null {
-    const activePointers = this.input.manager.pointers.filter((pointer) => pointer.isDown);
-    if (activePointers.length < 2) return null;
-    return [activePointers[0], activePointers[1]];
-  }
-
-  private startPinch(): void {
-    const pointers = this.getTwoActivePointers();
-    if (!pointers) return;
-
-    const [p1, p2] = pointers;
-    this.isPinching = true;
-    this.suppressTap = true;
-    this.pinchDistance = Phaser.Math.Distance.Between(p1.x, p1.y, p2.x, p2.y);
-    this.pinchScale = this.boardScale;
-    this.pinchCenterX = (p1.x + p2.x) / 2;
-    this.pinchCenterY = (p1.y + p2.y) / 2;
-    this.pinchOffsetX = this.boardOffsetX;
-    this.pinchOffsetY = this.boardOffsetY;
-    this.boardTouch?.timer?.remove(false);
-    this.boardTouch = null;
-  }
-
-  private updatePinch(): void {
-    const pointers = this.getTwoActivePointers();
-    if (!pointers || this.pinchDistance <= 0) return;
-
-    const [p1, p2] = pointers;
-    const distance = Phaser.Math.Distance.Between(p1.x, p1.y, p2.x, p2.y);
-    const centerX = (p1.x + p2.x) / 2;
-    const centerY = (p1.y + p2.y) / 2;
-
-    const zoomRatio = distance / this.pinchDistance;
-    const targetScale = Phaser.Math.Clamp(this.pinchScale * zoomRatio, this.minBoardScale, this.maxBoardScale);
-
-    const localX = (this.pinchCenterX - (this.boardBaseX + this.pinchOffsetX)) / this.pinchScale;
-    const localY = (this.pinchCenterY - (this.boardBaseY + this.pinchOffsetY)) / this.pinchScale;
-
-    this.boardScale = targetScale;
-    this.boardOffsetX = centerX - localX * this.boardScale - this.boardBaseX;
-    this.boardOffsetY = centerY - localY * this.boardScale - this.boardBaseY;
-    this.clampBoardOffset();
-    this.applyBoardTransform();
-  }
-
-  private clampBoardOffset(): void {
-    const baseWidth = this.currentDifficulty.width * this.cellSize;
-    const baseHeight = this.currentDifficulty.height * this.cellSize;
-    const maxOffsetX = Math.max(0, (baseWidth * this.boardScale - baseWidth) * 0.5 + 18);
-    const maxOffsetY = Math.max(0, (baseHeight * this.boardScale - baseHeight) * 0.5 + 18);
-    this.boardOffsetX = Phaser.Math.Clamp(this.boardOffsetX, -maxOffsetX, maxOffsetX);
-    this.boardOffsetY = Phaser.Math.Clamp(this.boardOffsetY, -maxOffsetY, maxOffsetY);
-  }
-
-  private applyBoardTransform(): void {
-    this.boardLayer.setPosition(this.boardBaseX + this.boardOffsetX, this.boardBaseY + this.boardOffsetY);
-    this.boardLayer.setScale(this.boardScale);
-  }
-
-  private updateBoardInputArea(): void {
-    const boardWidth = this.currentDifficulty.width * this.cellSize;
-    const boardHeight = this.currentDifficulty.height * this.cellSize;
-    this.boardInputZone
-      .setPosition(this.boardBaseX, this.boardBaseY)
-      .setSize(boardWidth, boardHeight)
-      .setDisplaySize(boardWidth, boardHeight);
-    this.boardInputZone.input?.hitArea.setTo(0, 0, boardWidth, boardHeight);
-  }
-
-  private screenToCell(screenX: number, screenY: number): { x: number; y: number } | null {
-    const localX = (screenX - (this.boardBaseX + this.boardOffsetX)) / this.boardScale;
-    const localY = (screenY - (this.boardBaseY + this.boardOffsetY)) / this.boardScale;
-
-    if (localX < 0 || localY < 0) return null;
-
-    const x = Math.floor(localX / this.cellSize);
-    const y = Math.floor(localY / this.cellSize);
-    if (!this.inRange(x, y)) return null;
-    return { x, y };
   }
 
   private onCellTap(x: number, y: number): void {
