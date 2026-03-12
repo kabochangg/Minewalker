@@ -13,6 +13,7 @@ interface Cell {
 const GRID_W = 10;
 const GRID_H = 14;
 const LONG_PRESS_MS = 420;
+const TAP_MOVE_TOLERANCE = 14;
 
 const NUMBER_COLORS: Record<number, string> = {
   1: '#6ec8ff',
@@ -281,23 +282,49 @@ export class GameScene extends Phaser.Scene {
   private bindCellPointer(zone: Phaser.GameObjects.Zone, x: number, y: number): void {
     zone.setInteractive();
     let downAt = 0;
+    let downX = 0;
+    let downY = 0;
+    let longPressed = false;
+    let pressTimer: Phaser.Time.TimerEvent | null = null;
 
-    zone.on('pointerdown', () => {
+    zone.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
       downAt = this.time.now;
+      downX = pointer.x;
+      downY = pointer.y;
+      longPressed = false;
+
+      pressTimer?.remove(false);
+      pressTimer = this.time.delayedCall(LONG_PRESS_MS, () => {
+        if (this.gameEnded) return;
+        if (!pointer.isDown) return;
+        const moved = Phaser.Math.Distance.Between(pointer.x, pointer.y, downX, downY);
+        if (moved > TAP_MOVE_TOLERANCE) return;
+        longPressed = true;
+        this.toggleFlag(x, y);
+      });
     });
 
-    zone.on('pointerup', () => {
+    zone.on('pointerup', (pointer: Phaser.Input.Pointer) => {
       if (this.gameEnded) return;
+      pressTimer?.remove(false);
+      pressTimer = null;
+
+      const moved = Phaser.Math.Distance.Between(pointer.x, pointer.y, downX, downY);
+      if (moved > TAP_MOVE_TOLERANCE) return;
+
       const held = this.time.now - downAt;
-      if (held >= LONG_PRESS_MS) {
-        this.toggleFlag(x, y);
-      } else {
-        this.onCellTap(x, y);
-      }
+      if (longPressed || held >= LONG_PRESS_MS) return;
+      this.onCellTap(x, y);
+    });
+
+    zone.on('pointerout', () => {
+      pressTimer?.remove(false);
+      pressTimer = null;
     });
   }
 
   private onCellTap(x: number, y: number): void {
+    if (this.gameEnded) return;
     const target = this.grid[y][x];
 
     if (target.revealed) {
