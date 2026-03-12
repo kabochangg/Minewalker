@@ -10,9 +10,23 @@ interface Cell {
   adjacentMines: number;
 }
 
-const GRID_W = 10;
-const GRID_H = 14;
-const MINE_COUNT = 24;
+type DifficultyKey = 'beginner' | 'intermediate' | 'advanced';
+
+interface DifficultyPreset {
+  label: string;
+  width: number;
+  height: number;
+  mineCount: number;
+}
+
+const DIFFICULTY_PRESETS: Record<DifficultyKey, DifficultyPreset> = {
+  beginner: { label: '初級', width: 9, height: 9, mineCount: 10 },
+  intermediate: { label: '中級', width: 16, height: 16, mineCount: 40 },
+  advanced: { label: '上級', width: 30, height: 16, mineCount: 99 }
+};
+
+const DIFFICULTY_ORDER: DifficultyKey[] = ['beginner', 'intermediate', 'advanced'];
+const DEFAULT_DIFFICULTY: DifficultyKey = 'beginner';
 const LONG_PRESS_MS = 420;
 const TAP_MOVE_TOLERANCE = 14;
 
@@ -45,7 +59,10 @@ export class GameScene extends Phaser.Scene {
   private minesText!: Phaser.GameObjects.Text;
   private timerText!: Phaser.GameObjects.Text;
   private flagModeText!: Phaser.GameObjects.Text;
+  private difficultyText!: Phaser.GameObjects.Text;
   private helpModal!: Phaser.GameObjects.Container;
+
+  private currentDifficultyKey: DifficultyKey = DEFAULT_DIFFICULTY;
 
   private boardX = 0;
   private boardY = 0;
@@ -91,10 +108,11 @@ export class GameScene extends Phaser.Scene {
 
     const maxBoardW = w - horizontalPadding * 2 - 10;
     const maxBoardH = h - this.safeTop - this.safeBottom - this.topPanelH - this.bottomPanelH - gap * 4;
-    this.cellSize = Math.max(20, Math.floor(Math.min(maxBoardW / GRID_W, maxBoardH / GRID_H)));
+    const { width, height } = this.currentDifficulty;
+    this.cellSize = Math.max(20, Math.floor(Math.min(maxBoardW / width, maxBoardH / height)));
 
-    const boardWidth = this.cellSize * GRID_W;
-    const boardHeight = this.cellSize * GRID_H;
+    const boardWidth = this.cellSize * width;
+    const boardHeight = this.cellSize * height;
 
     this.boardX = Math.floor((w - boardWidth) / 2);
     this.boardY = this.safeTop + this.topPanelH + gap;
@@ -112,9 +130,9 @@ export class GameScene extends Phaser.Scene {
     this.add
       .rectangle(
         w / 2,
-        this.boardY + (GRID_H * this.cellSize) / 2,
-        GRID_W * this.cellSize + 10,
-        GRID_H * this.cellSize + 10,
+        this.boardY + (this.currentDifficulty.height * this.cellSize) / 2,
+        this.currentDifficulty.width * this.cellSize + 10,
+        this.currentDifficulty.height * this.cellSize + 10,
         0x0a1324
       )
       .setStrokeStyle(2, 0x476998, 0.95);
@@ -141,6 +159,18 @@ export class GameScene extends Phaser.Scene {
         fontStyle: 'bold'
       })
       .setOrigin(1, 0);
+
+    this.difficultyText = this.add
+      .text(this.scale.gameSize.width / 2, this.safeTop + 18, '', {
+        color: '#c8ddff',
+        fontSize: '12px',
+        fontStyle: 'bold'
+      })
+      .setOrigin(0.5, 0)
+      .setInteractive({ useHandCursor: true })
+      .on('pointerup', () => {
+        this.cycleDifficulty();
+      });
   }
 
   private addBottomUi(): void {
@@ -243,10 +273,12 @@ export class GameScene extends Phaser.Scene {
     this.cellBg = [];
     this.cellText = [];
 
-    for (let y = 0; y < GRID_H; y += 1) {
+    const { width, height } = this.currentDifficulty;
+
+    for (let y = 0; y < height; y += 1) {
       this.cellBg[y] = [];
       this.cellText[y] = [];
-      for (let x = 0; x < GRID_W; x += 1) {
+      for (let x = 0; x < width; x += 1) {
         const px = this.boardX + x * this.cellSize;
         const py = this.boardY + y * this.cellSize;
         const rect = this.add
@@ -359,10 +391,11 @@ export class GameScene extends Phaser.Scene {
   }
 
   private buildGrid(): Cell[][] {
+    const { width, height, mineCount } = this.currentDifficulty;
     const grid: Cell[][] = [];
-    for (let y = 0; y < GRID_H; y += 1) {
+    for (let y = 0; y < height; y += 1) {
       grid[y] = [];
-      for (let x = 0; x < GRID_W; x += 1) {
+      for (let x = 0; x < width; x += 1) {
         grid[y][x] = {
           hidden: true,
           flagged: false,
@@ -374,13 +407,13 @@ export class GameScene extends Phaser.Scene {
     }
 
     const minePositions = new Set<number>();
-    while (minePositions.size < MINE_COUNT) {
-      minePositions.add(Phaser.Math.Between(0, GRID_W * GRID_H - 1));
+    while (minePositions.size < mineCount) {
+      minePositions.add(Phaser.Math.Between(0, width * height - 1));
     }
 
     for (const idx of minePositions) {
-      const x = idx % GRID_W;
-      const y = Math.floor(idx / GRID_W);
+      const x = idx % width;
+      const y = Math.floor(idx / width);
       grid[y][x].kind = 'mine';
     }
 
@@ -388,8 +421,9 @@ export class GameScene extends Phaser.Scene {
   }
 
   private computeAdjacency(): void {
-    for (let y = 0; y < GRID_H; y += 1) {
-      for (let x = 0; x < GRID_W; x += 1) {
+    const { width, height } = this.currentDifficulty;
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
         const c = this.grid[y][x];
         c.adjacentMines = this.neighbors(x, y).filter(([nx, ny]) => this.grid[ny][nx].kind === 'mine').length;
       }
@@ -488,7 +522,7 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    const totalSafeCells = GRID_W * GRID_H - MINE_COUNT;
+    const totalSafeCells = this.currentDifficulty.width * this.currentDifficulty.height - this.currentDifficulty.mineCount;
     if (this.openedSafeCells >= totalSafeCells) {
       this.gameEnded = true;
       this.gameWon = true;
@@ -499,15 +533,17 @@ export class GameScene extends Phaser.Scene {
 
   private refreshUi(): void {
     const flaggedCount = this.grid.flat().filter((cell) => cell.flagged).length;
-    const remainingMines = MINE_COUNT - flaggedCount;
+    const remainingMines = this.currentDifficulty.mineCount - flaggedCount;
     this.minesText.setText(`🚩 ${Math.max(remainingMines, 0)}`);
     this.timerText.setText(`⏱ ${this.formatTime(this.elapsedSeconds)}`);
     this.flagModeText.setText(this.flagMode ? '🚩ON' : '🚩OFF');
+    this.difficultyText.setText(`難易度: ${this.currentDifficulty.label}`);
   }
 
   private redrawAll(): void {
-    for (let y = 0; y < GRID_H; y += 1) {
-      for (let x = 0; x < GRID_W; x += 1) {
+    const { width, height } = this.currentDifficulty;
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
         this.redrawCell(x, y);
       }
     }
@@ -546,8 +582,9 @@ export class GameScene extends Phaser.Scene {
   private ensureFirstRevealIsSafe(x: number, y: number): void {
     if (this.grid[y][x].kind !== 'mine') return;
 
-    for (let ty = 0; ty < GRID_H; ty += 1) {
-      for (let tx = 0; tx < GRID_W; tx += 1) {
+    const { width, height } = this.currentDifficulty;
+    for (let ty = 0; ty < height; ty += 1) {
+      for (let tx = 0; tx < width; tx += 1) {
         if ((tx !== x || ty !== y) && this.grid[ty][tx].kind === 'safe') {
           this.grid[ty][tx].kind = 'mine';
           this.grid[y][x].kind = 'safe';
@@ -559,8 +596,9 @@ export class GameScene extends Phaser.Scene {
   }
 
   private revealAllMines(): void {
-    for (let y = 0; y < GRID_H; y += 1) {
-      for (let x = 0; x < GRID_W; x += 1) {
+    const { width, height } = this.currentDifficulty;
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
         const cell = this.grid[y][x];
         if (cell.kind === 'mine') {
           cell.hidden = false;
@@ -606,6 +644,18 @@ export class GameScene extends Phaser.Scene {
   }
 
   private inRange(x: number, y: number): boolean {
-    return x >= 0 && x < GRID_W && y >= 0 && y < GRID_H;
+    const { width, height } = this.currentDifficulty;
+    return x >= 0 && x < width && y >= 0 && y < height;
+  }
+
+  private cycleDifficulty(): void {
+    const currentIdx = DIFFICULTY_ORDER.indexOf(this.currentDifficultyKey);
+    const nextIdx = (currentIdx + 1) % DIFFICULTY_ORDER.length;
+    this.currentDifficultyKey = DIFFICULTY_ORDER[nextIdx];
+    this.scene.restart();
+  }
+
+  private get currentDifficulty(): DifficultyPreset {
+    return DIFFICULTY_PRESETS[this.currentDifficultyKey];
   }
 }
