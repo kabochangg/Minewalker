@@ -78,6 +78,7 @@ export class GameScene extends Phaser.Scene {
   private panelWidth = 0;
   private topPanelH = 0;
   private bottomPanelH = 0;
+  private topPanelY = 0;
   private safeTop = 0;
   private safeBottom = 0;
 
@@ -138,27 +139,37 @@ export class GameScene extends Phaser.Scene {
     const h = this.scale.gameSize.height;
     const horizontalPadding = 8;
     const gap = 6;
+    const minCellSize = 10;
 
     const rootStyle = getComputedStyle(document.documentElement);
-    const safeTop = Number.parseInt(rootStyle.getPropertyValue('--safe-top'), 10);
-    const safeBottom = Number.parseInt(rootStyle.getPropertyValue('--safe-bottom'), 10);
+    const safeTop = Number.parseFloat(rootStyle.getPropertyValue('--safe-top'));
+    const safeBottom = Number.parseFloat(rootStyle.getPropertyValue('--safe-bottom'));
     this.safeTop = Number.isFinite(safeTop) ? safeTop : 0;
     this.safeBottom = Number.isFinite(safeBottom) ? safeBottom : 0;
 
-    this.topPanelH = 92;
-    this.bottomPanelH = 52;
+    this.topPanelH = Phaser.Math.Clamp(Math.floor(h * 0.15), 74, 92);
+    this.bottomPanelH = Phaser.Math.Clamp(Math.floor(h * 0.095), 48, 56);
+    this.topPanelY = this.safeTop + 2;
 
-    const maxBoardW = w - horizontalPadding * 2 - 10;
-    const maxBoardH = h - this.safeTop - this.safeBottom - this.topPanelH - this.bottomPanelH - gap * 4;
+    const maxBoardW = Math.max(60, w - horizontalPadding * 2 - 10);
+    const maxBoardH = Math.max(60, h - this.safeTop - this.safeBottom - this.topPanelH - this.bottomPanelH - gap * 3 - 4);
     const { width, height } = this.currentDifficulty;
-    this.cellSize = Math.max(20, Math.floor(Math.min(maxBoardW / width, maxBoardH / height)));
+    this.cellSize = Math.max(minCellSize, Math.floor(Math.min(maxBoardW / width, maxBoardH / height)));
 
     const boardWidth = this.cellSize * width;
     const boardHeight = this.cellSize * height;
 
     this.boardX = Math.floor((w - boardWidth) / 2);
-    this.boardY = this.safeTop + this.topPanelH + gap;
+    this.boardY = this.topPanelY + this.topPanelH + gap;
     this.bottomY = this.boardY + boardHeight + gap;
+
+    const maxBottomTop = h - this.safeBottom - this.bottomPanelH;
+    if (this.bottomY > maxBottomTop) {
+      const overflow = this.bottomY - maxBottomTop;
+      this.boardY = Math.max(this.topPanelY + this.topPanelH + 2, this.boardY - overflow);
+      this.bottomY = this.boardY + boardHeight + gap;
+    }
+
     this.panelWidth = Math.min(w - horizontalPadding * 2, boardWidth + 10);
   }
 
@@ -166,7 +177,7 @@ export class GameScene extends Phaser.Scene {
     const w = this.scale.gameSize.width;
 
     this.add
-      .rectangle(this.snap(w / 2), this.snap(this.safeTop + this.topPanelH / 2), this.panelWidth, this.topPanelH - 4, 0x081126)
+      .rectangle(this.snap(w / 2), this.snap(this.topPanelY + this.topPanelH / 2), this.panelWidth, this.topPanelH - 4, 0x081126)
       .setStrokeStyle(1, 0x28406d, 0.95);
 
     this.add
@@ -188,21 +199,21 @@ export class GameScene extends Phaser.Scene {
     const left = Math.floor((this.scale.gameSize.width - this.panelWidth) / 2) + 10;
     const right = left + this.panelWidth - 20;
 
-    this.minesText = this.add.text(left, this.safeTop + 18, '', {
+    this.minesText = this.add.text(left, this.topPanelY + 16, '', {
       color: '#f0f6ff',
       fontSize: '15px',
       fontStyle: 'bold'
     });
 
     this.timerText = this.add
-      .text(right, this.safeTop + 18, '', {
+      .text(right, this.topPanelY + 16, '', {
         color: '#f0f6ff',
         fontSize: '15px',
         fontStyle: 'bold'
       })
       .setOrigin(1, 0);
 
-    this.add.text(this.snap(this.scale.gameSize.width / 2), this.safeTop + 41, '難易度', {
+    this.add.text(this.snap(this.scale.gameSize.width / 2), this.topPanelY + 38, '難易度', {
       color: '#c8ddff',
       fontSize: '11px',
       fontStyle: 'bold'
@@ -215,7 +226,7 @@ export class GameScene extends Phaser.Scene {
     const left = Math.floor((this.scale.gameSize.width - this.panelWidth) / 2) + 10;
     const buttonGap = 4;
     const buttonWidth = Math.floor((this.panelWidth - 20 - buttonGap * 2) / 3);
-    const buttonY = this.safeTop + 56;
+    const buttonY = this.topPanelY + this.topPanelH - 34;
 
     DIFFICULTY_ORDER.forEach((key, idx) => {
       const x = left + idx * (buttonWidth + buttonGap);
