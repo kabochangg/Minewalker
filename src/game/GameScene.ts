@@ -10,6 +10,10 @@ const GRID_H = ACTIVE_BOARD_CONFIG.height;
 const MINE_COUNT = ACTIVE_BOARD_CONFIG.mineCount;
 
 const ATTACK_REPEAT_INTERVAL_MS = 250;
+const CELL_WIDTH_RATIO = 1.12;
+const CELL_HEIGHT_RATIO = 0.98;
+const PLAYER_MARKER_COLOR = '#ffe36a';
+const PLAYER_MARKER_OUTLINE_COLOR = '#121a2b';
 
 const NUMBER_COLORS: Record<number, string> = {
   1: '#4ea7ff',
@@ -50,6 +54,8 @@ export class GameScene extends Phaser.Scene {
   private boardX = 0;
   private boardY = 0;
   private cellSize = 32;
+  private cellWidth = 32;
+  private cellHeight = 32;
   private bottomY = 0;
   private panelWidth = 0;
   private topPanelH = 0;
@@ -86,15 +92,17 @@ export class GameScene extends Phaser.Scene {
     this.safeTop = Number.isFinite(safeTop) ? safeTop : 0;
     this.safeBottom = Number.isFinite(safeBottom) ? safeBottom : 0;
 
-    this.topPanelH = 58;
+    this.topPanelH = 54;
     this.bottomPanelH = 170;
 
     const maxBoardW = w - horizontalPadding * 2 - 10;
     const maxBoardH = h - this.safeTop - this.safeBottom - this.topPanelH - this.bottomPanelH - gap * 4;
-    this.cellSize = Math.max(18, Math.floor(Math.min(maxBoardW / GRID_W, maxBoardH / GRID_H)));
+    this.cellSize = Math.max(18, Math.floor(Math.min(maxBoardW / (GRID_W * CELL_WIDTH_RATIO), maxBoardH / (GRID_H * CELL_HEIGHT_RATIO))));
+    this.cellWidth = Math.floor(this.cellSize * CELL_WIDTH_RATIO);
+    this.cellHeight = Math.floor(this.cellSize * CELL_HEIGHT_RATIO);
 
-    const boardWidth = this.cellSize * GRID_W;
-    const boardHeight = this.cellSize * GRID_H;
+    const boardWidth = this.cellWidth * GRID_W;
+    const boardHeight = this.cellHeight * GRID_H;
 
     this.boardX = Math.floor((w - boardWidth) / 2);
     this.boardY = this.safeTop + this.topPanelH + gap;
@@ -112,9 +120,9 @@ export class GameScene extends Phaser.Scene {
     this.add
       .rectangle(
         w / 2,
-        this.boardY + (GRID_H * this.cellSize) / 2,
-        GRID_W * this.cellSize + 10,
-        GRID_H * this.cellSize + 10,
+        this.boardY + (GRID_H * this.cellHeight) / 2,
+        GRID_W * this.cellWidth + 10,
+        GRID_H * this.cellHeight + 10,
         0x0a1324
       )
       .setStrokeStyle(2, 0x476998, 0.95);
@@ -156,9 +164,10 @@ export class GameScene extends Phaser.Scene {
 
   private addBottomUi(): void {
     const left = Math.floor((this.scale.gameSize.width - this.panelWidth) / 2) + 12;
-    const top = this.bottomY + 10;
     const dpadSize = 44;
-    const gap = 8;
+    const gap = 5;
+    const controlHeight = dpadSize * 3 + gap * 2;
+    const top = this.bottomY + this.bottomPanelH - controlHeight - 8;
 
     const centerX = left + dpadSize + gap;
     const centerY = top + dpadSize + gap;
@@ -294,16 +303,16 @@ export class GameScene extends Phaser.Scene {
       this.cellBg[y] = [];
       this.cellText[y] = [];
       for (let x = 0; x < GRID_W; x += 1) {
-        const px = this.boardX + x * this.cellSize;
-        const py = this.boardY + y * this.cellSize;
+        const px = this.boardX + x * this.cellWidth;
+        const py = this.boardY + y * this.cellHeight;
         const rect = this.add
-          .rectangle(px, py, this.cellSize - 2, this.cellSize - 2, 0x4a556f)
+          .rectangle(px, py, this.cellWidth - 2, this.cellHeight - 2, 0x4a556f)
           .setOrigin(0)
           .setStrokeStyle(1, 0x2a3447, 0.95);
         const txt = this.add
-          .text(px + this.cellSize / 2, py + this.cellSize / 2, '', {
+          .text(px + this.cellWidth / 2, py + this.cellHeight / 2, '', {
             color: '#f3f5ff',
-            fontSize: this.cellSize >= 26 ? '16px' : '13px',
+            fontSize: Math.min(this.cellWidth, this.cellHeight) >= 26 ? '16px' : '13px',
             fontStyle: 'bold'
           })
           .setOrigin(0.5);
@@ -316,8 +325,10 @@ export class GameScene extends Phaser.Scene {
     this.playerMarker?.destroy();
     this.playerMarker = this.add
       .text(0, 0, '', {
-        color: '#ffffff',
-        fontSize: this.cellSize >= 26 ? '18px' : '14px',
+        color: PLAYER_MARKER_COLOR,
+        stroke: PLAYER_MARKER_OUTLINE_COLOR,
+        strokeThickness: 4,
+        fontSize: Math.min(this.cellWidth, this.cellHeight) >= 26 ? '18px' : '14px',
         fontStyle: 'bold'
       })
       .setOrigin(0.5)
@@ -436,8 +447,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   private redrawPlayer(): void {
-    const px = this.boardX + this.playerPos.x * this.cellSize + this.cellSize / 2;
-    const py = this.boardY + this.playerPos.y * this.cellSize + this.cellSize / 2;
+    const px = this.boardX + this.playerPos.x * this.cellWidth + this.cellWidth / 2;
+    const py = this.boardY + this.playerPos.y * this.cellHeight + this.cellHeight / 2;
     this.playerMarker.setPosition(px, py);
     this.playerMarker.setText(FACING_GLYPH[this.playerFacing]);
   }
