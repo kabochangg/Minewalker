@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { BOARD_CONFIG, DEFAULT_BOARD_DIFFICULTY } from './boardConfig';
-import { GOAL_STATE, TILE_KIND, type Tile } from './types';
+import { generateBoard } from './boardGenerator';
+import { TILE_KIND, type Tile } from './types';
 
 const ACTIVE_BOARD_CONFIG = BOARD_CONFIG[DEFAULT_BOARD_DIFFICULTY];
 const GRID_W = ACTIVE_BOARD_CONFIG.width;
@@ -228,8 +229,13 @@ export class GameScene extends Phaser.Scene {
     this.timerEvent?.remove(false);
     this.timerEvent = null;
 
-    this.grid = this.buildGrid();
-    this.computeAdjacency();
+    const generatedBoard = generateBoard({
+      width: GRID_W,
+      height: GRID_H,
+      mineCount: MINE_COUNT
+    });
+    this.grid = generatedBoard.grid;
+    this.openedSafeCells = this.grid.flat().filter((tile) => tile.isOpen && !tile.hasMine).length;
 
     this.cellBg.flat().forEach((r) => r.destroy());
     this.cellText.flat().forEach((t) => t.destroy());
@@ -351,45 +357,6 @@ export class GameScene extends Phaser.Scene {
     this.checkEndState();
   }
 
-  private buildGrid(): Tile[][] {
-    const grid: Tile[][] = [];
-    for (let y = 0; y < GRID_H; y += 1) {
-      grid[y] = [];
-      for (let x = 0; x < GRID_W; x += 1) {
-        grid[y][x] = {
-          isOpen: false,
-          flagged: false,
-          tileKind: TILE_KIND.WALL,
-          hasMine: false,
-          goalState: GOAL_STATE.NONE,
-          adjacentMineCount: 0
-        };
-      }
-    }
-
-    const minePositions = new Set<number>();
-    while (minePositions.size < MINE_COUNT) {
-      minePositions.add(Phaser.Math.Between(0, GRID_W * GRID_H - 1));
-    }
-
-    for (const idx of minePositions) {
-      const x = idx % GRID_W;
-      const y = Math.floor(idx / GRID_W);
-      grid[y][x].hasMine = true;
-    }
-
-    return grid;
-  }
-
-  private computeAdjacency(): void {
-    for (let y = 0; y < GRID_H; y += 1) {
-      for (let x = 0; x < GRID_W; x += 1) {
-        const c = this.grid[y][x];
-        c.adjacentMineCount = this.neighbors(x, y).filter(([nx, ny]) => this.grid[ny][nx].hasMine).length;
-      }
-    }
-  }
-
   private toggleFlag(x: number, y: number): void {
     const cell = this.grid[y][x];
     if (cell.isOpen) return;
@@ -403,7 +370,6 @@ export class GameScene extends Phaser.Scene {
     if (target.isOpen || target.flagged) return;
 
     if (!this.firstRevealDone) {
-      this.ensureFirstRevealIsSafe(x, y);
       this.startTimer();
       this.firstRevealDone = true;
     }
@@ -529,21 +495,6 @@ export class GameScene extends Phaser.Scene {
     bg.setStrokeStyle(1, 0xa8b5c7, 1);
     txt.setColor(NUMBER_COLORS[cell.adjacentMineCount] ?? '#3a4a60');
     txt.setText(cell.adjacentMineCount > 0 ? String(cell.adjacentMineCount) : '');
-  }
-
-  private ensureFirstRevealIsSafe(x: number, y: number): void {
-    if (!this.grid[y][x].hasMine) return;
-
-    for (let ty = 0; ty < GRID_H; ty += 1) {
-      for (let tx = 0; tx < GRID_W; tx += 1) {
-        if ((tx !== x || ty !== y) && !this.grid[ty][tx].hasMine) {
-          this.grid[ty][tx].hasMine = true;
-          this.grid[y][x].hasMine = false;
-          this.computeAdjacency();
-          return;
-        }
-      }
-    }
   }
 
   private revealAllMines(): void {
