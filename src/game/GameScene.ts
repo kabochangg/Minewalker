@@ -1,14 +1,19 @@
 import Phaser from 'phaser';
 import { BOARD_CONFIG, DEFAULT_BOARD_DIFFICULTY } from './boardConfig';
+import { addDirectionOffset, DIRECTION, type Direction, type Position } from './direction';
 import { generateBoard } from './boardGenerator';
-import { TILE_KIND, type Tile } from './types';
+import { GOAL_STATE, TILE_KIND, type Tile } from './types';
 
 const ACTIVE_BOARD_CONFIG = BOARD_CONFIG[DEFAULT_BOARD_DIFFICULTY];
 const GRID_W = ACTIVE_BOARD_CONFIG.width;
 const GRID_H = ACTIVE_BOARD_CONFIG.height;
 const MINE_COUNT = ACTIVE_BOARD_CONFIG.mineCount;
-const LONG_PRESS_MS = 420;
-const TAP_MOVE_TOLERANCE = 14;
+
+const ATTACK_REPEAT_INTERVAL_MS = 250;
+const CELL_WIDTH_RATIO = 1.12;
+const CELL_HEIGHT_RATIO = 0.98;
+const PLAYER_MARKER_COLOR = '#ffe36a';
+const PLAYER_MARKER_OUTLINE_COLOR = '#121a2b';
 
 const NUMBER_COLORS: Record<number, string> = {
   1: '#4ea7ff',
@@ -21,29 +26,36 @@ const NUMBER_COLORS: Record<number, string> = {
   8: '#4f4f4f'
 };
 
-const CELL_SYMBOL = { mine: '✹' } as const;
+const FACING_GLYPH: Record<Direction, string> = {
+  [DIRECTION.UP]: '↑',
+  [DIRECTION.DOWN]: '↓',
+  [DIRECTION.LEFT]: '←',
+  [DIRECTION.RIGHT]: '→'
+};
 
 export class GameScene extends Phaser.Scene {
   private grid: Tile[][] = [];
   private cellBg: Phaser.GameObjects.Rectangle[][] = [];
   private cellText: Phaser.GameObjects.Text[][] = [];
 
-  private gameEnded = false;
-  private flagMode = false;
-  private gameWon = false;
-  private firstRevealDone = false;
-  private elapsedSeconds = 0;
-  private openedSafeCells = 0;
-  private timerEvent: Phaser.Time.TimerEvent | null = null;
+  private playerPos: Position = { x: 0, y: 0 };
+  private playerFacing: Direction = DIRECTION.UP;
+  private playerHp = 3;
 
-  private minesText!: Phaser.GameObjects.Text;
-  private timerText!: Phaser.GameObjects.Text;
-  private flagModeText!: Phaser.GameObjects.Text;
+  private gameEnded = false;
+  private gameWon = false;
+
+  private hpText!: Phaser.GameObjects.Text;
+  private statusText!: Phaser.GameObjects.Text;
   private helpModal!: Phaser.GameObjects.Container;
+
+  private playerMarker!: Phaser.GameObjects.Text;
 
   private boardX = 0;
   private boardY = 0;
   private cellSize = 32;
+  private cellWidth = 32;
+  private cellHeight = 32;
   private bottomY = 0;
   private panelWidth = 0;
   private topPanelH = 0;
@@ -80,15 +92,17 @@ export class GameScene extends Phaser.Scene {
     this.safeTop = Number.isFinite(safeTop) ? safeTop : 0;
     this.safeBottom = Number.isFinite(safeBottom) ? safeBottom : 0;
 
-    this.topPanelH = 58;
-    this.bottomPanelH = 52;
+    this.topPanelH = 54;
+    this.bottomPanelH = 170;
 
     const maxBoardW = w - horizontalPadding * 2 - 10;
     const maxBoardH = h - this.safeTop - this.safeBottom - this.topPanelH - this.bottomPanelH - gap * 4;
-    this.cellSize = Math.max(20, Math.floor(Math.min(maxBoardW / GRID_W, maxBoardH / GRID_H)));
+    this.cellSize = Math.max(18, Math.floor(Math.min(maxBoardW / (GRID_W * CELL_WIDTH_RATIO), maxBoardH / (GRID_H * CELL_HEIGHT_RATIO))));
+    this.cellWidth = Math.floor(this.cellSize * CELL_WIDTH_RATIO);
+    this.cellHeight = Math.floor(this.cellSize * CELL_HEIGHT_RATIO);
 
-    const boardWidth = this.cellSize * GRID_W;
-    const boardHeight = this.cellSize * GRID_H;
+    const boardWidth = this.cellWidth * GRID_W;
+    const boardHeight = this.cellHeight * GRID_H;
 
     this.boardX = Math.floor((w - boardWidth) / 2);
     this.boardY = this.safeTop + this.topPanelH + gap;
@@ -106,9 +120,9 @@ export class GameScene extends Phaser.Scene {
     this.add
       .rectangle(
         w / 2,
-        this.boardY + (GRID_H * this.cellSize) / 2,
-        GRID_W * this.cellSize + 10,
-        GRID_H * this.cellSize + 10,
+        this.boardY + (GRID_H * this.cellHeight) / 2,
+        GRID_W * this.cellWidth + 10,
+        GRID_H * this.cellHeight + 10,
         0x0a1324
       )
       .setStrokeStyle(2, 0x476998, 0.95);
@@ -122,51 +136,57 @@ export class GameScene extends Phaser.Scene {
     const left = Math.floor((this.scale.gameSize.width - this.panelWidth) / 2) + 10;
     const right = left + this.panelWidth - 20;
 
-    this.minesText = this.add.text(left, this.safeTop + 18, '', {
+    this.hpText = this.add.text(left, this.safeTop + 18, '', {
       color: '#f0f6ff',
-      fontSize: '15px',
+      fontSize: '16px',
       fontStyle: 'bold'
     });
 
-    this.timerText = this.add
-      .text(right, this.safeTop + 18, '', {
+    const helpBtn = this.makeButton(right - 72, this.safeTop + 12, 32, 32, '?', () => {
+      this.helpModal.setVisible(true);
+    });
+    const restartBtn = this.makeButton(right - 36, this.safeTop + 12, 32, 32, '↺', () => {
+      this.newRun();
+    });
+    helpBtn.setDepth(5);
+    restartBtn.setDepth(5);
+
+    this.statusText = this.add
+      .text(right - 84, this.safeTop + 20, '', {
         color: '#f0f6ff',
-        fontSize: '15px',
+        fontSize: '13px',
         fontStyle: 'bold'
       })
       .setOrigin(1, 0);
+
+    this.helpModal = this.createHelpModal();
   }
 
   private addBottomUi(): void {
-    const left = Math.floor((this.scale.gameSize.width - this.panelWidth) / 2) + 10;
-    const buttonGap = 6;
-    const buttonWidth = Math.floor((this.panelWidth - 20 - buttonGap * 2) / 3);
-    const controlY = this.bottomY + 10;
+    const left = Math.floor((this.scale.gameSize.width - this.panelWidth) / 2) + 12;
+    const dpadSize = 44;
+    const gap = 5;
+    const controlHeight = dpadSize * 3 + gap * 2;
+    const top = this.bottomY + this.bottomPanelH - controlHeight - 8;
 
-    const flagBtn = this.makeButton(left, controlY, buttonWidth, 32, '', () => {
-      this.flagMode = !this.flagMode;
-      this.refreshUi();
-    });
-    this.flagModeText = flagBtn.list[1] as Phaser.GameObjects.Text;
+    const centerX = left + dpadSize + gap;
+    const centerY = top + dpadSize + gap;
 
-    const restartBtn = this.makeButton(left + buttonWidth + buttonGap, controlY, buttonWidth, 32, 'リスタート', () => {
-      this.newRun();
-    });
+    this.makeButton(centerX, top, dpadSize, dpadSize, '↑', () => this.onMoveInput(DIRECTION.UP));
+    this.makeButton(centerX, top + (dpadSize + gap) * 2, dpadSize, dpadSize, '↓', () => this.onMoveInput(DIRECTION.DOWN));
+    this.makeButton(left, centerY, dpadSize, dpadSize, '←', () => this.onMoveInput(DIRECTION.LEFT));
+    this.makeButton(left + (dpadSize + gap) * 2, centerY, dpadSize, dpadSize, '→', () => this.onMoveInput(DIRECTION.RIGHT));
 
-    const helpBtn = this.makeButton(left + (buttonWidth + buttonGap) * 2, controlY, buttonWidth, 32, '?', () => {
-      this.helpModal.setVisible(true);
-    });
-
-    this.helpModal = this.createHelpModal();
-
-    [flagBtn, restartBtn, helpBtn].forEach((btn) => btn.setDepth(5));
+    const attackX = left + (dpadSize + gap) * 3 + 16;
+    const attackW = Math.min(120, this.panelWidth - (attackX - left) - 12);
+    this.makeRepeatingButton(attackX, top + 16, attackW, 68, '叩く', () => this.tryAttackForward());
   }
 
   private createHelpModal(): Phaser.GameObjects.Container {
     const w = this.scale.gameSize.width;
     const h = this.scale.gameSize.height;
     const modalW = Math.min(this.panelWidth, w - 20);
-    const modalH = Math.min(270, h - this.safeTop - this.safeBottom - 32);
+    const modalH = Math.min(300, h - this.safeTop - this.safeBottom - 32);
     const left = (w - modalW) / 2;
     const top = (h - modalH) / 2;
 
@@ -177,12 +197,17 @@ export class GameScene extends Phaser.Scene {
       fontSize: '14px',
       fontStyle: 'bold'
     });
-    const body = this.add.text(left + 12, top + 38, '【基本操作】\n・タップ: マスを開く\n・数字以外をすべて開くとクリア\n\n【flag mode】\n・ON中のタップは旗のON/OFF\n・長押しでも旗を立てられる\n\n【chord】\n・数字マスをタップ\n・周囲の旗数=数字 のとき周囲を同時に開く', {
-      color: '#d7e6ff',
-      fontSize: '12px',
-      lineSpacing: 4,
-      wordWrap: { width: modalW - 24 }
-    });
+    const body = this.add.text(
+      left + 12,
+      top + 38,
+      '・十字キーで移動\n・移動できなくても向きは変わる\n・叩くで正面の壁を壊す\n・数字は周囲8マスの地雷数\n・地雷を叩くとHPが減る\n・焼け跡マスは通れる\n・ゴールは開くまで見えない',
+      {
+        color: '#d7e6ff',
+        fontSize: '12px',
+        lineSpacing: 4,
+        wordWrap: { width: modalW - 24 }
+      }
+    );
     const closeBtn = this.makeButton(left + modalW - 68, top + modalH - 38, 56, 28, '閉じる', () => {
       modal.setVisible(false);
     });
@@ -205,7 +230,7 @@ export class GameScene extends Phaser.Scene {
       .setOrigin(0)
       .setStrokeStyle(1, 0x7796c7, 0.9);
     const text = this.add
-      .text(w / 2, h / 2, label, { color: '#f1f7ff', fontSize: '13px', fontStyle: 'bold' })
+      .text(w / 2, h / 2, label, { color: '#f1f7ff', fontSize: '16px', fontStyle: 'bold' })
       .setOrigin(0.5);
     const c = this.add.container(x, y, [box, text]);
     box.setInteractive({ useHandCursor: true }).on('pointerdown', () => {
@@ -219,23 +244,55 @@ export class GameScene extends Phaser.Scene {
     return c;
   }
 
+  private makeRepeatingButton(
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    label: string,
+    onTrigger: () => void
+  ): Phaser.GameObjects.Container {
+    const box = this.add
+      .rectangle(0, 0, w, h, 0x644022)
+      .setOrigin(0)
+      .setStrokeStyle(1, 0xc08b55, 0.95);
+    const text = this.add
+      .text(w / 2, h / 2, label, { color: '#fff4df', fontSize: '20px', fontStyle: 'bold' })
+      .setOrigin(0.5);
+    const c = this.add.container(x, y, [box, text]);
+
+    let repeatingEvent: Phaser.Time.TimerEvent | null = null;
+    const stopRepeat = () => {
+      repeatingEvent?.remove(false);
+      repeatingEvent = null;
+      box.setFillStyle(0x644022);
+    };
+
+    box.setInteractive({ useHandCursor: true }).on('pointerdown', () => {
+      box.setFillStyle(0x815631);
+      onTrigger();
+      repeatingEvent = this.time.addEvent({
+        delay: ATTACK_REPEAT_INTERVAL_MS,
+        loop: true,
+        callback: onTrigger
+      });
+    });
+
+    box.on('pointerup', stopRepeat);
+    box.on('pointerout', stopRepeat);
+
+    return c;
+  }
+
   private newRun(): void {
     this.gameEnded = false;
     this.gameWon = false;
-    this.flagMode = false;
-    this.firstRevealDone = false;
-    this.elapsedSeconds = 0;
-    this.openedSafeCells = 0;
-    this.timerEvent?.remove(false);
-    this.timerEvent = null;
+    this.playerHp = 3;
 
-    const generatedBoard = generateBoard({
-      width: GRID_W,
-      height: GRID_H,
-      mineCount: MINE_COUNT
-    });
+    const generatedBoard = generateBoard({ width: GRID_W, height: GRID_H, mineCount: MINE_COUNT });
     this.grid = generatedBoard.grid;
-    this.openedSafeCells = this.grid.flat().filter((tile) => tile.isOpen && !tile.hasMine).length;
+    this.playerPos = { ...generatedBoard.start };
+    this.playerFacing = DIRECTION.UP;
 
     this.cellBg.flat().forEach((r) => r.destroy());
     this.cellText.flat().forEach((t) => t.destroy());
@@ -246,220 +303,98 @@ export class GameScene extends Phaser.Scene {
       this.cellBg[y] = [];
       this.cellText[y] = [];
       for (let x = 0; x < GRID_W; x += 1) {
-        const px = this.boardX + x * this.cellSize;
-        const py = this.boardY + y * this.cellSize;
+        const px = this.boardX + x * this.cellWidth;
+        const py = this.boardY + y * this.cellHeight;
         const rect = this.add
-          .rectangle(px, py, this.cellSize - 2, this.cellSize - 2, 0x4a556f)
+          .rectangle(px, py, this.cellWidth - 2, this.cellHeight - 2, 0x4a556f)
           .setOrigin(0)
           .setStrokeStyle(1, 0x2a3447, 0.95);
         const txt = this.add
-          .text(px + this.cellSize / 2, py + this.cellSize / 2, '', {
+          .text(px + this.cellWidth / 2, py + this.cellHeight / 2, '', {
             color: '#f3f5ff',
-            fontSize: this.cellSize >= 30 ? '19px' : '16px',
+            fontSize: Math.min(this.cellWidth, this.cellHeight) >= 26 ? '16px' : '13px',
             fontStyle: 'bold'
           })
           .setOrigin(0.5);
-
-        const zone = this.add.zone(px, py, this.cellSize - 2, this.cellSize - 2).setOrigin(0);
-        this.bindCellPointer(zone, x, y);
 
         this.cellBg[y][x] = rect;
         this.cellText[y][x] = txt;
       }
     }
 
-    this.refreshUi();
+    this.playerMarker?.destroy();
+    this.playerMarker = this.add
+      .text(0, 0, '', {
+        color: PLAYER_MARKER_COLOR,
+        stroke: PLAYER_MARKER_OUTLINE_COLOR,
+        strokeThickness: 4,
+        fontSize: Math.min(this.cellWidth, this.cellHeight) >= 26 ? '18px' : '14px',
+        fontStyle: 'bold'
+      })
+      .setOrigin(0.5)
+      .setDepth(10);
+
     this.redrawAll();
+    this.refreshUi();
   }
 
-  private bindCellPointer(zone: Phaser.GameObjects.Zone, x: number, y: number): void {
-    zone.setInteractive();
-    let downAt = 0;
-    let downX = 0;
-    let downY = 0;
-    let longPressed = false;
-    let pressTimer: Phaser.Time.TimerEvent | null = null;
-
-    zone.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-      downAt = this.time.now;
-      downX = pointer.x;
-      downY = pointer.y;
-      longPressed = false;
-
-      pressTimer?.remove(false);
-      pressTimer = this.time.delayedCall(LONG_PRESS_MS, () => {
-        if (this.gameEnded) return;
-        if (!pointer.isDown) return;
-        const moved = Phaser.Math.Distance.Between(pointer.x, pointer.y, downX, downY);
-        if (moved > TAP_MOVE_TOLERANCE) return;
-        longPressed = true;
-        this.toggleFlag(x, y);
-      });
-    });
-
-    zone.on('pointerup', (pointer: Phaser.Input.Pointer) => {
-      if (this.gameEnded) return;
-      pressTimer?.remove(false);
-      pressTimer = null;
-
-      const moved = Phaser.Math.Distance.Between(pointer.x, pointer.y, downX, downY);
-      if (moved > TAP_MOVE_TOLERANCE) return;
-
-      const held = this.time.now - downAt;
-      if (longPressed || held >= LONG_PRESS_MS) return;
-      this.onCellTap(x, y);
-    });
-
-    zone.on('pointerout', () => {
-      pressTimer?.remove(false);
-      pressTimer = null;
-    });
-  }
-
-  private onCellTap(x: number, y: number): void {
+  private onMoveInput(direction: Direction): void {
     if (this.gameEnded) return;
-    const target = this.grid[y][x];
+    this.playerFacing = direction;
 
-    if (target.isOpen) {
-      this.tryChord(x, y);
-      return;
+    const nextPos = addDirectionOffset(this.playerPos, direction);
+    if (this.isPassable(nextPos.x, nextPos.y)) {
+      this.playerPos = nextPos;
+      this.checkGoalReached();
     }
 
-    if (this.flagMode) {
-      this.toggleFlag(x, y);
-      return;
-    }
-
-    this.revealAction(x, y);
+    this.redrawPlayer();
+    this.refreshUi();
   }
 
-  private tryChord(x: number, y: number): void {
-    const cell = this.grid[y][x];
-    if (!cell.isOpen || cell.adjacentMineCount <= 0) return;
+  private tryAttackForward(): void {
+    if (this.gameEnded) return;
 
-    const around = this.neighbors(x, y);
-    const flagCount = around.filter(([nx, ny]) => this.grid[ny][nx].flagged).length;
-    if (flagCount !== cell.adjacentMineCount) return;
+    const target = addDirectionOffset(this.playerPos, this.playerFacing);
+    if (!this.inRange(target.x, target.y)) return;
 
-    let opened = 0;
-    for (const [nx, ny] of around) {
-      const n = this.grid[ny][nx];
-      if (!n.isOpen && !n.flagged) {
-        opened += this.revealCell(nx, ny);
+    const targetTile = this.grid[target.y][target.x];
+    if (targetTile.isOpen) return;
+
+    targetTile.isOpen = true;
+
+    if (targetTile.goalState === GOAL_STATE.HIDDEN) {
+      targetTile.goalState = GOAL_STATE.REVEALED;
+      targetTile.tileKind = TILE_KIND.GOAL;
+      this.redrawCell(target.x, target.y);
+      this.refreshUi();
+      return;
+    }
+
+    if (targetTile.hasMine) {
+      this.playerHp -= 1;
+      targetTile.tileKind = TILE_KIND.SCORCHED;
+      this.redrawCell(target.x, target.y);
+
+      if (this.playerHp <= 0) {
+        this.gameEnded = true;
+        this.gameWon = false;
       }
-    }
-
-    if (opened === 0) return;
-    this.refreshUi();
-    for (const [nx, ny] of around) {
-      this.redrawCell(nx, ny);
-    }
-    this.checkEndState();
-  }
-
-  private toggleFlag(x: number, y: number): void {
-    const cell = this.grid[y][x];
-    if (cell.isOpen) return;
-    cell.flagged = !cell.flagged;
-    this.redrawCell(x, y);
-    this.refreshUi();
-  }
-
-  private revealAction(x: number, y: number): void {
-    const target = this.grid[y][x];
-    if (target.isOpen || target.flagged) return;
-
-    if (!this.firstRevealDone) {
-      this.startTimer();
-      this.firstRevealDone = true;
-    }
-
-    this.revealCell(x, y);
-
-    this.refreshUi();
-    this.checkEndState();
-  }
-
-  private revealCell(x: number, y: number, forceSafe = false): number {
-    if (this.gameEnded && !forceSafe) return 0;
-    const cell = this.grid[y][x];
-    if (cell.isOpen || cell.flagged) return 0;
-
-    cell.isOpen = true;
-
-    if (forceSafe) {
-      cell.hasMine = false;
-      cell.tileKind = TILE_KIND.WALL;
-    }
-
-    if (cell.hasMine) {
-      this.gameEnded = true;
-      this.gameWon = false;
-      this.revealAllMines();
-      this.redrawCell(x, y);
-      return 1;
-    }
-
-    this.openedSafeCells += 1;
-    cell.tileKind = TILE_KIND.FLOOR;
-    if (cell.adjacentMineCount === 0) {
-      this.expandZeroes(x, y);
-    }
-
-    this.redrawCell(x, y);
-    return 1;
-  }
-
-  private expandZeroes(startX: number, startY: number): void {
-    const queue: Array<[number, number]> = [[startX, startY]];
-    const seen = new Set<string>();
-
-    while (queue.length > 0) {
-      const [x, y] = queue.shift()!;
-      const key = `${x},${y}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-
-      const cell = this.grid[y][x];
-      if (cell.hasMine || cell.adjacentMineCount !== 0) continue;
-
-      for (const [nx, ny] of this.neighbors(x, y)) {
-        const n = this.grid[ny][nx];
-        if (!n.isOpen && !n.flagged && !n.hasMine) {
-          n.isOpen = true;
-          n.tileKind = TILE_KIND.FLOOR;
-          this.openedSafeCells += 1;
-          if (n.adjacentMineCount === 0) {
-            queue.push([nx, ny]);
-          }
-          this.redrawCell(nx, ny);
-        }
-      }
-    }
-  }
-
-  private checkEndState(): void {
-    if (this.gameEnded) {
-      this.timerEvent?.remove(false);
-      this.timerEvent = null;
+      this.refreshUi();
       return;
     }
 
-    const totalSafeCells = GRID_W * GRID_H - MINE_COUNT;
-    if (this.openedSafeCells >= totalSafeCells) {
+    targetTile.tileKind = TILE_KIND.FLOOR;
+    this.redrawCell(target.x, target.y);
+    this.refreshUi();
+  }
+
+  private checkGoalReached(): void {
+    const tile = this.grid[this.playerPos.y][this.playerPos.x];
+    if (tile.goalState === GOAL_STATE.REVEALED) {
       this.gameEnded = true;
       this.gameWon = true;
-      this.timerEvent?.remove(false);
-      this.timerEvent = null;
     }
-  }
-
-  private refreshUi(): void {
-    const flaggedCount = this.grid.flat().filter((tile) => tile.flagged).length;
-    const remainingMines = MINE_COUNT - flaggedCount;
-    this.minesText.setText(`🚩 ${Math.max(remainingMines, 0)}`);
-    this.timerText.setText(`⏱ ${this.formatTime(this.elapsedSeconds)}`);
-    this.flagModeText.setText(this.flagMode ? '🚩ON' : '🚩OFF');
   }
 
   private redrawAll(): void {
@@ -468,6 +403,7 @@ export class GameScene extends Phaser.Scene {
         this.redrawCell(x, y);
       }
     }
+    this.redrawPlayer();
   }
 
   private redrawCell(x: number, y: number): void {
@@ -476,71 +412,61 @@ export class GameScene extends Phaser.Scene {
     const txt = this.cellText[y][x];
 
     if (!cell.isOpen) {
-      bg.setFillStyle(cell.flagged ? 0x6f4f2a : 0x4b5569);
-      bg.setStrokeStyle(1, cell.flagged ? 0xa27b48 : 0x30384a, 1);
-      txt.setColor(cell.flagged ? '#ffe4b3' : '#ffffff');
-      txt.setText(cell.flagged ? '⚑' : '');
+      bg.setFillStyle(0x4b5569);
+      bg.setStrokeStyle(1, 0x30384a, 1);
+      txt.setText('');
       return;
     }
 
-    if (cell.hasMine) {
-      bg.setFillStyle(0xa33f4f);
-      bg.setStrokeStyle(1, 0xda7b88, 1);
-      txt.setColor('#fff5f6');
-      txt.setText(CELL_SYMBOL.mine);
+    if (cell.goalState === GOAL_STATE.REVEALED) {
+      bg.setFillStyle(0x2d6849);
+      bg.setStrokeStyle(1, 0x76d39e, 1);
+      txt.setColor('#d8ffe9');
+      txt.setText('G');
       return;
     }
 
-    bg.setFillStyle(0xdce4ef);
-    bg.setStrokeStyle(1, 0xa8b5c7, 1);
+    if (cell.tileKind === TILE_KIND.SCORCHED) {
+      bg.setFillStyle(0x5d3b30);
+      bg.setStrokeStyle(1, 0x8c5f4f, 1);
+      txt.setColor(NUMBER_COLORS[cell.adjacentMineCount] ?? '#f7e7df');
+      txt.setText(cell.adjacentMineCount > 0 ? String(cell.adjacentMineCount) : '');
+      return;
+    }
+
+    if (cell.tileKind === TILE_KIND.START) {
+      bg.setFillStyle(0x8ac0c8);
+      bg.setStrokeStyle(1, 0xafdce3, 1);
+    } else {
+      bg.setFillStyle(0xdce4ef);
+      bg.setStrokeStyle(1, 0xa8b5c7, 1);
+    }
+
     txt.setColor(NUMBER_COLORS[cell.adjacentMineCount] ?? '#3a4a60');
     txt.setText(cell.adjacentMineCount > 0 ? String(cell.adjacentMineCount) : '');
   }
 
-  private revealAllMines(): void {
-    for (let y = 0; y < GRID_H; y += 1) {
-      for (let x = 0; x < GRID_W; x += 1) {
-        const cell = this.grid[y][x];
-        if (cell.hasMine) {
-          cell.isOpen = true;
-          this.redrawCell(x, y);
-        }
-      }
+  private redrawPlayer(): void {
+    const px = this.boardX + this.playerPos.x * this.cellWidth + this.cellWidth / 2;
+    const py = this.boardY + this.playerPos.y * this.cellHeight + this.cellHeight / 2;
+    this.playerMarker.setPosition(px, py);
+    this.playerMarker.setText(FACING_GLYPH[this.playerFacing]);
+  }
+
+  private refreshUi(): void {
+    this.hpText.setText(`HP: ${this.playerHp}`);
+
+    if (this.gameEnded) {
+      this.statusText.setText(this.gameWon ? 'CLEAR' : 'GAME OVER');
+      return;
     }
+
+    this.statusText.setText(`向き ${FACING_GLYPH[this.playerFacing]}`);
   }
 
-  private startTimer(): void {
-    this.timerEvent?.remove(false);
-    this.timerEvent = this.time.addEvent({
-      delay: 1000,
-      loop: true,
-      callback: () => {
-        if (this.gameEnded) return;
-        this.elapsedSeconds += 1;
-        this.refreshUi();
-      }
-    });
-  }
-
-  private formatTime(totalSeconds: number): string {
-    const m = Math.floor(totalSeconds / 60)
-      .toString()
-      .padStart(2, '0');
-    const s = (totalSeconds % 60).toString().padStart(2, '0');
-    return `${m}:${s}`;
-  }
-
-  private neighbors(x: number, y: number): Array<[number, number]> {
-    const out: Array<[number, number]> = [];
-    for (let dy = -1; dy <= 1; dy += 1) {
-      for (let dx = -1; dx <= 1; dx += 1) {
-        if (dx === 0 && dy === 0) continue;
-        const nx = x + dx;
-        const ny = y + dy;
-        if (this.inRange(nx, ny)) out.push([nx, ny]);
-      }
-    }
-    return out;
+  private isPassable(x: number, y: number): boolean {
+    if (!this.inRange(x, y)) return false;
+    return this.grid[y][x].isOpen;
   }
 
   private inRange(x: number, y: number): boolean {
