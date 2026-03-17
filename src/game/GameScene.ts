@@ -54,6 +54,8 @@ export class GameScene extends Phaser.Scene {
   private boardAreaH = 0;
   private gridY = 0;
   private cellSize = 32;
+  private cellWidth = 32;
+  private cellHeight = 32;
   private bottomY = 0;
   private panelWidth = 0;
   private topPanelH = 0;
@@ -98,8 +100,8 @@ export class GameScene extends Phaser.Scene {
     const maxGridH = this.boardAreaH - 10;
     this.cellSize = Math.max(18, Math.floor(Math.min(maxBoardW / GRID_W, maxGridH / GRID_H)));
 
-    const boardWidth = this.cellSize * GRID_W;
-    const boardHeight = this.cellSize * GRID_H;
+    const boardWidth = this.cellWidth * GRID_W;
+    const boardHeight = this.cellHeight * GRID_H;
 
     this.boardX = Math.floor((w - boardWidth) / 2);
     this.boardY = this.safeTop + this.topPanelH;
@@ -310,13 +312,13 @@ export class GameScene extends Phaser.Scene {
         const px = this.boardX + x * this.cellSize;
         const py = this.gridY + y * this.cellSize;
         const rect = this.add
-          .rectangle(px, py, this.cellSize - 2, this.cellSize - 2, 0x4a556f)
+          .rectangle(px, py, this.cellWidth - 2, this.cellHeight - 2, 0x4a556f)
           .setOrigin(0)
           .setStrokeStyle(1, 0x2a3447, 0.95);
         const txt = this.add
-          .text(px + this.cellSize / 2, py + this.cellSize / 2, '', {
+          .text(px + this.cellWidth / 2, py + this.cellHeight / 2, '', {
             color: '#f3f5ff',
-            fontSize: this.cellSize >= 26 ? '16px' : '13px',
+            fontSize: Math.min(this.cellWidth, this.cellHeight) >= 26 ? '16px' : '13px',
             fontStyle: 'bold'
           })
           .setOrigin(0.5);
