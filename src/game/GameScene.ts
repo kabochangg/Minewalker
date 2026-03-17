@@ -5,12 +5,10 @@ import { generateBoard } from './boardGenerator';
 import { GOAL_STATE, TILE_KIND, type Tile } from './types';
 
 const ACTIVE_BOARD_CONFIG = BOARD_CONFIG[DEFAULT_BOARD_DIFFICULTY];
-const GRID_W = ACTIVE_BOARD_CONFIG.width;
-const GRID_H = ACTIVE_BOARD_CONFIG.height;
-const MINE_COUNT = ACTIVE_BOARD_CONFIG.mineCount;
-
 const ATTACK_REPEAT_INTERVAL_MS = 250;
 const MOVE_REPEAT_INTERVAL_MS = 250;
+const MIN_CELL_SIZE = 24;
+const BOARD_FRAME_PADDING = 10;
 const PLAYER_MARKER_COLOR = '#0c1f3d';
 const PLAYER_MARKER_STROKE_COLOR = '#f5fbff';
 
@@ -64,6 +62,10 @@ export class GameScene extends Phaser.Scene {
   private safeTop = 0;
   private safeBottom = 0;
 
+  private gridWidth = ACTIVE_BOARD_CONFIG.width;
+  private gridHeight = ACTIVE_BOARD_CONFIG.height;
+  private mineCount = ACTIVE_BOARD_CONFIG.mineCount;
+
   constructor() {
     super('GameScene');
   }
@@ -97,20 +99,37 @@ export class GameScene extends Phaser.Scene {
     this.bottomPanelH = Math.max(132, Math.floor(playableH * 0.2));
     this.boardAreaH = Math.max(220, playableH - this.topPanelH - this.bottomPanelH);
 
-    const maxBoardW = w - horizontalPadding * 2 - 10;
-    const maxGridH = this.boardAreaH - 10;
-    this.cellSize = Math.max(22, Math.floor(Math.min(maxBoardW / GRID_W, maxGridH / GRID_H)));
+    const maxBoardW = w - horizontalPadding * 2 - BOARD_FRAME_PADDING;
+    const maxGridH = this.boardAreaH - BOARD_FRAME_PADDING;
+
+    this.cellSize = Math.max(
+      MIN_CELL_SIZE,
+      Math.floor(Math.min(maxBoardW / ACTIVE_BOARD_CONFIG.width, maxGridH / ACTIVE_BOARD_CONFIG.height))
+    );
+
+    this.gridWidth = Math.max(ACTIVE_BOARD_CONFIG.width, Math.floor(maxBoardW / this.cellSize));
+    this.gridHeight = Math.max(ACTIVE_BOARD_CONFIG.height, Math.floor(maxGridH / this.cellSize));
+
+    this.cellSize = Math.max(
+      MIN_CELL_SIZE,
+      Math.floor(Math.min(maxBoardW / this.gridWidth, maxGridH / this.gridHeight))
+    );
     this.cellWidth = this.cellSize;
     this.cellHeight = this.cellSize;
 
-    const boardWidth = this.cellWidth * GRID_W;
-    const boardHeight = this.cellHeight * GRID_H;
+    const boardWidth = this.cellWidth * this.gridWidth;
+    const boardHeight = this.cellHeight * this.gridHeight;
+
+    const baseDensity = ACTIVE_BOARD_CONFIG.mineCount / (ACTIVE_BOARD_CONFIG.width * ACTIVE_BOARD_CONFIG.height);
+    const targetMineCount = Math.round(this.gridWidth * this.gridHeight * baseDensity);
+    const maxMineCount = Math.max(1, this.gridWidth * this.gridHeight - 67);
+    this.mineCount = Phaser.Math.Clamp(targetMineCount, 1, maxMineCount);
 
     this.boardX = Math.floor((w - boardWidth) / 2);
     this.boardY = this.safeTop + this.topPanelH;
     this.gridY = this.boardY + Math.floor((this.boardAreaH - boardHeight) / 2);
     this.bottomY = this.boardY + this.boardAreaH;
-    this.panelWidth = Math.min(w - horizontalPadding * 2, boardWidth + 10);
+    this.panelWidth = Math.min(w - horizontalPadding * 2, boardWidth + BOARD_FRAME_PADDING);
   }
 
   private drawFrames(): void {
@@ -122,10 +141,10 @@ export class GameScene extends Phaser.Scene {
 
     this.add
       .rectangle(
-        w / 2,
-        this.boardY + this.boardAreaH / 2,
-        GRID_W * this.cellSize + 10,
-        this.boardAreaH,
+        this.boardX + (this.gridWidth * this.cellSize) / 2,
+        this.gridY + (this.gridHeight * this.cellSize) / 2,
+        this.gridWidth * this.cellSize + BOARD_FRAME_PADDING,
+        this.gridHeight * this.cellSize + BOARD_FRAME_PADDING,
         0x0a1324
       )
       .setStrokeStyle(2, 0x476998, 0.95);
@@ -363,7 +382,7 @@ export class GameScene extends Phaser.Scene {
     this.gameWon = false;
     this.playerHp = 3;
 
-    const generatedBoard = generateBoard({ width: GRID_W, height: GRID_H, mineCount: MINE_COUNT });
+    const generatedBoard = generateBoard({ width: this.gridWidth, height: this.gridHeight, mineCount: this.mineCount });
     this.grid = generatedBoard.grid;
     this.playerPos = { ...generatedBoard.start };
     this.playerFacing = DIRECTION.UP;
@@ -373,10 +392,10 @@ export class GameScene extends Phaser.Scene {
     this.cellBg = [];
     this.cellText = [];
 
-    for (let y = 0; y < GRID_H; y += 1) {
+    for (let y = 0; y < this.gridHeight; y += 1) {
       this.cellBg[y] = [];
       this.cellText[y] = [];
-      for (let x = 0; x < GRID_W; x += 1) {
+      for (let x = 0; x < this.gridWidth; x += 1) {
         const px = this.boardX + x * this.cellSize;
         const py = this.gridY + y * this.cellSize;
         const rect = this.add
@@ -471,8 +490,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   private redrawAll(): void {
-    for (let y = 0; y < GRID_H; y += 1) {
-      for (let x = 0; x < GRID_W; x += 1) {
+    for (let y = 0; y < this.gridHeight; y += 1) {
+      for (let x = 0; x < this.gridWidth; x += 1) {
         this.redrawCell(x, y);
       }
     }
@@ -543,6 +562,6 @@ export class GameScene extends Phaser.Scene {
   }
 
   private inRange(x: number, y: number): boolean {
-    return x >= 0 && x < GRID_W && y >= 0 && y < GRID_H;
+    return x >= 0 && x < this.gridWidth && y >= 0 && y < this.gridHeight;
   }
 }
