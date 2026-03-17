@@ -44,6 +44,7 @@ export class GameScene extends Phaser.Scene {
   private helpModal!: Phaser.GameObjects.Container;
   private moveInputEnabled = true;
   private attackInputEnabled = true;
+  private activeInputOwnership: Partial<Record<'move' | 'attack', { pointerId: number; stop: () => void }>> = {};
 
   private playerMarker!: Phaser.GameObjects.Text;
 
@@ -71,6 +72,7 @@ export class GameScene extends Phaser.Scene {
 
   create(): void {
     this.cameras.main.setBackgroundColor('#060d1b');
+    this.input.addPointer(3);
     this.computeLayout();
     this.drawFrames();
     this.addTopUi();
@@ -358,6 +360,12 @@ export class GameScene extends Phaser.Scene {
     let activePointerId: number | null = null;
 
     const canTrigger = () => (inputChannel === 'move' ? this.moveInputEnabled : this.attackInputEnabled);
+    const clearOwnership = () => {
+      if (this.activeInputOwnership[inputChannel]?.stop === stopRepeat) {
+        delete this.activeInputOwnership[inputChannel];
+      }
+    };
+
     const stopRepeat = (pointerId?: number) => {
       if (pointerId !== undefined && activePointerId !== pointerId) {
         return;
@@ -366,8 +374,42 @@ export class GameScene extends Phaser.Scene {
       repeatingEvent?.remove(false);
       repeatingEvent = null;
       activePointerId = null;
+      clearOwnership();
       box.setFillStyle(idleColor);
       text.setY(h / 2);
+    };
+
+    const startRepeat = (pointer: Phaser.Input.Pointer) => {
+      if (!canTrigger()) {
+        return;
+      }
+
+      const currentOwner = this.activeInputOwnership[inputChannel];
+      if (currentOwner?.pointerId === pointer.id && repeatingEvent) {
+        return;
+      }
+
+      currentOwner?.stop();
+
+      activePointerId = pointer.id;
+      this.activeInputOwnership[inputChannel] = {
+        pointerId: pointer.id,
+        stop: stopRepeat
+      };
+      box.setFillStyle(activeColor);
+      text.setY(h / 2 + 1);
+      onTrigger();
+      repeatingEvent = this.time.addEvent({
+        delay: repeatIntervalMs,
+        loop: true,
+        callback: () => {
+          if (!canTrigger() || this.activeInputOwnership[inputChannel]?.stop !== stopRepeat) {
+            stopRepeat();
+            return;
+          }
+          onTrigger();
+        }
+      });
     };
 
     box
@@ -376,34 +418,30 @@ export class GameScene extends Phaser.Scene {
         Phaser.Geom.Rectangle.Contains
       )
       .on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-      if (!canTrigger()) {
-        return;
-      }
+        startRepeat(pointer);
+      });
 
-      if (repeatingEvent) {
-        return;
-      }
+    if (inputChannel === 'move') {
+      box.on('pointerover', (pointer: Phaser.Input.Pointer) => {
+        if (!pointer.isDown) {
+          return;
+        }
 
-      activePointerId = pointer.id;
-      box.setFillStyle(activeColor);
-      text.setY(h / 2 + 1);
-      onTrigger();
-      repeatingEvent = this.time.addEvent({
-        delay: repeatIntervalMs,
-        loop: true,
-        callback: () => {
-          if (!canTrigger()) {
-            stopRepeat();
-            return;
-          }
-          onTrigger();
+        const currentOwner = this.activeInputOwnership.move;
+        if (currentOwner?.pointerId === pointer.id) {
+          startRepeat(pointer);
         }
       });
-    });
+    }
 
     box.on('pointerup', (pointer: Phaser.Input.Pointer) => stopRepeat(pointer.id));
     box.on('pointerupoutside', (pointer: Phaser.Input.Pointer) => stopRepeat(pointer.id));
-    box.on('pointerout', (pointer: Phaser.Input.Pointer) => stopRepeat(pointer.id));
+    box.on('pointerout', (pointer: Phaser.Input.Pointer) => {
+      if (inputChannel === 'move' && pointer.isDown && this.activeInputOwnership.move?.pointerId === pointer.id) {
+        return;
+      }
+      stopRepeat(pointer.id);
+    });
 
     return c;
   }
@@ -413,6 +451,9 @@ export class GameScene extends Phaser.Scene {
     this.gameWon = false;
     this.moveInputEnabled = true;
     this.attackInputEnabled = true;
+    this.activeInputOwnership.move?.stop();
+    this.activeInputOwnership.attack?.stop();
+    this.activeInputOwnership = {};
     this.playerHp = 3;
 
     const generatedBoard = generateBoard({ width: this.gridWidth, height: this.gridHeight, mineCount: this.mineCount });
