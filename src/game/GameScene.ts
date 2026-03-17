@@ -1,16 +1,13 @@
 import Phaser from 'phaser';
 import { BOARD_CONFIG, DEFAULT_BOARD_DIFFICULTY } from './boardConfig';
+import { INPUT_HIT_PADDING_PX, INPUT_REPEAT_INTERVAL_MS, PLAYER_MARKER_STYLE } from './constants';
 import { addDirectionOffset, DIRECTION, type Direction, type Position } from './direction';
 import { generateBoard } from './boardGenerator';
 import { GOAL_STATE, TILE_KIND, type Tile } from './types';
 
 const ACTIVE_BOARD_CONFIG = BOARD_CONFIG[DEFAULT_BOARD_DIFFICULTY];
-const ATTACK_REPEAT_INTERVAL_MS = 250;
-const MOVE_REPEAT_INTERVAL_MS = 250;
 const MIN_CELL_SIZE = 24;
 const BOARD_FRAME_PADDING = 10;
-const PLAYER_MARKER_COLOR = '#0c1f3d';
-const PLAYER_MARKER_STROKE_COLOR = '#f5fbff';
 
 const NUMBER_COLORS: Record<number, string> = {
   1: '#4ea7ff',
@@ -45,6 +42,8 @@ export class GameScene extends Phaser.Scene {
   private hpText!: Phaser.GameObjects.Text;
   private statusText!: Phaser.GameObjects.Text;
   private helpModal!: Phaser.GameObjects.Container;
+  private moveInputEnabled = true;
+  private attackInputEnabled = true;
 
   private playerMarker!: Phaser.GameObjects.Text;
 
@@ -205,7 +204,8 @@ export class GameScene extends Phaser.Scene {
       0x3a4d73,
       '#f1f7ff',
       16,
-      MOVE_REPEAT_INTERVAL_MS
+      INPUT_REPEAT_INTERVAL_MS,
+      'move'
     );
     this.makeRepeatingButton(
       centerX,
@@ -218,7 +218,8 @@ export class GameScene extends Phaser.Scene {
       0x3a4d73,
       '#f1f7ff',
       16,
-      MOVE_REPEAT_INTERVAL_MS
+      INPUT_REPEAT_INTERVAL_MS,
+      'move'
     );
     this.makeRepeatingButton(
       left,
@@ -231,7 +232,8 @@ export class GameScene extends Phaser.Scene {
       0x3a4d73,
       '#f1f7ff',
       16,
-      MOVE_REPEAT_INTERVAL_MS
+      INPUT_REPEAT_INTERVAL_MS,
+      'move'
     );
     this.makeRepeatingButton(
       left + (dpadSize + dpadGap) * 2,
@@ -244,7 +246,8 @@ export class GameScene extends Phaser.Scene {
       0x3a4d73,
       '#f1f7ff',
       16,
-      MOVE_REPEAT_INTERVAL_MS
+      INPUT_REPEAT_INTERVAL_MS,
+      'move'
     );
 
     const attackX = left + (dpadSize + dpadGap) * 3 + 16;
@@ -261,7 +264,8 @@ export class GameScene extends Phaser.Scene {
       0x815631,
       '#fff4df',
       20,
-      ATTACK_REPEAT_INTERVAL_MS
+      INPUT_REPEAT_INTERVAL_MS,
+      'attack'
     );
   }
 
@@ -338,7 +342,8 @@ export class GameScene extends Phaser.Scene {
     activeColor: number,
     textColor: string,
     fontSize: number,
-    repeatIntervalMs: number
+    repeatIntervalMs: number,
+    inputChannel: 'move' | 'attack'
   ): Phaser.GameObjects.Container {
     const box = this.add
       .rectangle(0, 0, w, h, idleColor)
@@ -350,29 +355,55 @@ export class GameScene extends Phaser.Scene {
     const c = this.add.container(x, y, [box, text]);
 
     let repeatingEvent: Phaser.Time.TimerEvent | null = null;
-    const stopRepeat = () => {
+    let activePointerId: number | null = null;
+
+    const canTrigger = () => (inputChannel === 'move' ? this.moveInputEnabled : this.attackInputEnabled);
+    const stopRepeat = (pointerId?: number) => {
+      if (pointerId !== undefined && activePointerId !== pointerId) {
+        return;
+      }
+
       repeatingEvent?.remove(false);
       repeatingEvent = null;
+      activePointerId = null;
       box.setFillStyle(idleColor);
+      text.setY(h / 2);
     };
 
-    box.setInteractive({ useHandCursor: true }).on('pointerdown', () => {
+    box
+      .setInteractive(
+        new Phaser.Geom.Rectangle(-INPUT_HIT_PADDING_PX, -INPUT_HIT_PADDING_PX, w + INPUT_HIT_PADDING_PX * 2, h + INPUT_HIT_PADDING_PX * 2),
+        Phaser.Geom.Rectangle.Contains
+      )
+      .on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+      if (!canTrigger()) {
+        return;
+      }
+
       if (repeatingEvent) {
         return;
       }
 
+      activePointerId = pointer.id;
       box.setFillStyle(activeColor);
+      text.setY(h / 2 + 1);
       onTrigger();
       repeatingEvent = this.time.addEvent({
         delay: repeatIntervalMs,
         loop: true,
-        callback: onTrigger
+        callback: () => {
+          if (!canTrigger()) {
+            stopRepeat();
+            return;
+          }
+          onTrigger();
+        }
       });
     });
 
-    box.on('pointerup', stopRepeat);
-    box.on('pointerupoutside', stopRepeat);
-    box.on('pointerout', stopRepeat);
+    box.on('pointerup', (pointer: Phaser.Input.Pointer) => stopRepeat(pointer.id));
+    box.on('pointerupoutside', (pointer: Phaser.Input.Pointer) => stopRepeat(pointer.id));
+    box.on('pointerout', (pointer: Phaser.Input.Pointer) => stopRepeat(pointer.id));
 
     return c;
   }
@@ -380,6 +411,8 @@ export class GameScene extends Phaser.Scene {
   private newRun(): void {
     this.gameEnded = false;
     this.gameWon = false;
+    this.moveInputEnabled = true;
+    this.attackInputEnabled = true;
     this.playerHp = 3;
 
     const generatedBoard = generateBoard({ width: this.gridWidth, height: this.gridHeight, mineCount: this.mineCount });
@@ -418,11 +451,15 @@ export class GameScene extends Phaser.Scene {
     this.playerMarker?.destroy();
     this.playerMarker = this.add
       .text(0, 0, '', {
-        color: PLAYER_MARKER_COLOR,
-        fontSize: this.cellSize >= 26 ? '18px' : '14px',
+        color: PLAYER_MARKER_STYLE.color,
+        fontSize: `${this.cellSize >= 26 ? PLAYER_MARKER_STYLE.largeFontSize : PLAYER_MARKER_STYLE.smallFontSize}px`,
         fontStyle: 'bold'
       })
-      .setStroke(PLAYER_MARKER_STROKE_COLOR, this.cellSize >= 26 ? 4 : 3)
+      .setStroke(
+        PLAYER_MARKER_STYLE.strokeColor,
+        this.cellSize >= 26 ? PLAYER_MARKER_STYLE.largeStroke : PLAYER_MARKER_STYLE.smallStroke
+      )
+      .setShadow(0, PLAYER_MARKER_STYLE.shadowOffsetY, PLAYER_MARKER_STYLE.shadowColor, PLAYER_MARKER_STYLE.shadowBlur, true, true)
       .setOrigin(0.5)
       .setDepth(10);
 
@@ -471,6 +508,8 @@ export class GameScene extends Phaser.Scene {
       if (this.playerHp <= 0) {
         this.gameEnded = true;
         this.gameWon = false;
+        this.moveInputEnabled = false;
+        this.attackInputEnabled = false;
       }
       this.refreshUi();
       return;
@@ -486,6 +525,8 @@ export class GameScene extends Phaser.Scene {
     if (tile.goalState === GOAL_STATE.REVEALED) {
       this.gameEnded = true;
       this.gameWon = true;
+      this.moveInputEnabled = false;
+      this.attackInputEnabled = false;
     }
   }
 
