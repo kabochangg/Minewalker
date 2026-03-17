@@ -10,6 +10,7 @@ const GRID_H = ACTIVE_BOARD_CONFIG.height;
 const MINE_COUNT = ACTIVE_BOARD_CONFIG.mineCount;
 
 const ATTACK_REPEAT_INTERVAL_MS = 250;
+const MOVE_REPEAT_INTERVAL_MS = 250;
 const PLAYER_MARKER_COLOR = '#0c1f3d';
 const PLAYER_MARKER_STROKE_COLOR = '#f5fbff';
 
@@ -98,7 +99,9 @@ export class GameScene extends Phaser.Scene {
 
     const maxBoardW = w - horizontalPadding * 2 - 10;
     const maxGridH = this.boardAreaH - 10;
-    this.cellSize = Math.max(18, Math.floor(Math.min(maxBoardW / GRID_W, maxGridH / GRID_H)));
+    this.cellSize = Math.max(22, Math.floor(Math.min(maxBoardW / GRID_W, maxGridH / GRID_H)));
+    this.cellWidth = this.cellSize;
+    this.cellHeight = this.cellSize;
 
     const boardWidth = this.cellWidth * GRID_W;
     const boardHeight = this.cellHeight * GRID_H;
@@ -172,15 +175,75 @@ export class GameScene extends Phaser.Scene {
     const centerX = left + dpadSize + dpadGap;
     const centerY = top + dpadSize + dpadGap;
 
-    this.makeButton(centerX, top, dpadSize, dpadSize, '↑', () => this.onMoveInput(DIRECTION.UP));
-    this.makeButton(centerX, top + (dpadSize + dpadGap) * 2, dpadSize, dpadSize, '↓', () => this.onMoveInput(DIRECTION.DOWN));
-    this.makeButton(left, centerY, dpadSize, dpadSize, '←', () => this.onMoveInput(DIRECTION.LEFT));
-    this.makeButton(left + (dpadSize + dpadGap) * 2, centerY, dpadSize, dpadSize, '→', () => this.onMoveInput(DIRECTION.RIGHT));
+    this.makeRepeatingButton(
+      centerX,
+      top,
+      dpadSize,
+      dpadSize,
+      '↑',
+      () => this.onMoveInput(DIRECTION.UP),
+      0x2a385a,
+      0x3a4d73,
+      '#f1f7ff',
+      16,
+      MOVE_REPEAT_INTERVAL_MS
+    );
+    this.makeRepeatingButton(
+      centerX,
+      top + (dpadSize + dpadGap) * 2,
+      dpadSize,
+      dpadSize,
+      '↓',
+      () => this.onMoveInput(DIRECTION.DOWN),
+      0x2a385a,
+      0x3a4d73,
+      '#f1f7ff',
+      16,
+      MOVE_REPEAT_INTERVAL_MS
+    );
+    this.makeRepeatingButton(
+      left,
+      centerY,
+      dpadSize,
+      dpadSize,
+      '←',
+      () => this.onMoveInput(DIRECTION.LEFT),
+      0x2a385a,
+      0x3a4d73,
+      '#f1f7ff',
+      16,
+      MOVE_REPEAT_INTERVAL_MS
+    );
+    this.makeRepeatingButton(
+      left + (dpadSize + dpadGap) * 2,
+      centerY,
+      dpadSize,
+      dpadSize,
+      '→',
+      () => this.onMoveInput(DIRECTION.RIGHT),
+      0x2a385a,
+      0x3a4d73,
+      '#f1f7ff',
+      16,
+      MOVE_REPEAT_INTERVAL_MS
+    );
 
     const attackX = left + (dpadSize + dpadGap) * 3 + 16;
     const attackW = Math.min(124, this.panelWidth - (attackX - left) - 12);
     const attackH = Math.min(72, contentH - 12);
-    this.makeRepeatingButton(attackX, top + Math.floor((contentH - attackH) / 2), attackW, attackH, '叩く', () => this.tryAttackForward());
+    this.makeRepeatingButton(
+      attackX,
+      top + Math.floor((contentH - attackH) / 2),
+      attackW,
+      attackH,
+      '叩く',
+      () => this.tryAttackForward(),
+      0x644022,
+      0x815631,
+      '#fff4df',
+      20,
+      ATTACK_REPEAT_INTERVAL_MS
+    );
   }
 
   private createHelpModal(): Phaser.GameObjects.Container {
@@ -251,14 +314,19 @@ export class GameScene extends Phaser.Scene {
     w: number,
     h: number,
     label: string,
-    onTrigger: () => void
+    onTrigger: () => void,
+    idleColor: number,
+    activeColor: number,
+    textColor: string,
+    fontSize: number,
+    repeatIntervalMs: number
   ): Phaser.GameObjects.Container {
     const box = this.add
-      .rectangle(0, 0, w, h, 0x644022)
+      .rectangle(0, 0, w, h, idleColor)
       .setOrigin(0)
       .setStrokeStyle(1, 0xc08b55, 0.95);
     const text = this.add
-      .text(w / 2, h / 2, label, { color: '#fff4df', fontSize: '20px', fontStyle: 'bold' })
+      .text(w / 2, h / 2, label, { color: textColor, fontSize: `${fontSize}px`, fontStyle: 'bold' })
       .setOrigin(0.5);
     const c = this.add.container(x, y, [box, text]);
 
@@ -266,7 +334,7 @@ export class GameScene extends Phaser.Scene {
     const stopRepeat = () => {
       repeatingEvent?.remove(false);
       repeatingEvent = null;
-      box.setFillStyle(0x644022);
+      box.setFillStyle(idleColor);
     };
 
     box.setInteractive({ useHandCursor: true }).on('pointerdown', () => {
@@ -274,10 +342,10 @@ export class GameScene extends Phaser.Scene {
         return;
       }
 
-      box.setFillStyle(0x815631);
+      box.setFillStyle(activeColor);
       onTrigger();
       repeatingEvent = this.time.addEvent({
-        delay: ATTACK_REPEAT_INTERVAL_MS,
+        delay: repeatIntervalMs,
         loop: true,
         callback: onTrigger
       });
