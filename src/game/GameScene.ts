@@ -45,6 +45,7 @@ export class GameScene extends Phaser.Scene {
   private moveInputEnabled = true;
   private attackInputEnabled = true;
   private activeInputOwnership: Partial<Record<'move' | 'attack', { pointerId: number; stop: () => void }>> = {};
+  private moveButtonRefs: Array<{ box: Phaser.GameObjects.Rectangle; x: number; y: number; w: number; h: number }> = [];
 
   private playerMarker!: Phaser.GameObjects.Text;
 
@@ -74,6 +75,10 @@ export class GameScene extends Phaser.Scene {
     this.cameras.main.setBackgroundColor('#060d1b');
     this.input.addPointer(3);
     this.computeLayout();
+    this.input.on('pointermove', this.handleMoveSlide, this);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.input.off('pointermove', this.handleMoveSlide, this);
+    });
     this.drawFrames();
     this.addTopUi();
     this.addBottomUi();
@@ -186,6 +191,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private addBottomUi(): void {
+    this.moveButtonRefs = [];
     const left = Math.floor((this.scale.gameSize.width - this.panelWidth) / 2) + 12;
     const top = this.bottomY + 10;
     const dpadGap = 6;
@@ -443,7 +449,37 @@ export class GameScene extends Phaser.Scene {
       stopRepeat(pointer.id);
     });
 
+    if (inputChannel === 'move') {
+      this.moveButtonRefs.push({ box, x, y, w, h });
+    }
+
     return c;
+  }
+
+  private handleMoveSlide(pointer: Phaser.Input.Pointer): void {
+    if (!pointer.isDown) {
+      return;
+    }
+
+    const owner = this.activeInputOwnership.move;
+    if (!owner || owner.pointerId !== pointer.id) {
+      return;
+    }
+
+    const hoveredButton = this.moveButtonRefs.find(({ x, y, w, h }) =>
+      Phaser.Geom.Rectangle.Contains(
+        new Phaser.Geom.Rectangle(
+          x - INPUT_HIT_PADDING_PX,
+          y - INPUT_HIT_PADDING_PX,
+          w + INPUT_HIT_PADDING_PX * 2,
+          h + INPUT_HIT_PADDING_PX * 2
+        ),
+        pointer.x,
+        pointer.y
+      )
+    );
+
+    hoveredButton?.box.emit('pointerover', pointer);
   }
 
   private newRun(): void {
