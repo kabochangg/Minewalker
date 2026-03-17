@@ -10,10 +10,8 @@ const GRID_H = ACTIVE_BOARD_CONFIG.height;
 const MINE_COUNT = ACTIVE_BOARD_CONFIG.mineCount;
 
 const ATTACK_REPEAT_INTERVAL_MS = 250;
-const CELL_WIDTH_RATIO = 1.12;
-const CELL_HEIGHT_RATIO = 0.98;
-const PLAYER_MARKER_COLOR = '#ffe36a';
-const PLAYER_MARKER_OUTLINE_COLOR = '#121a2b';
+const PLAYER_MARKER_COLOR = '#0c1f3d';
+const PLAYER_MARKER_STROKE_COLOR = '#f5fbff';
 
 const NUMBER_COLORS: Record<number, string> = {
   1: '#4ea7ff',
@@ -53,6 +51,8 @@ export class GameScene extends Phaser.Scene {
 
   private boardX = 0;
   private boardY = 0;
+  private boardAreaH = 0;
+  private gridY = 0;
   private cellSize = 32;
   private cellWidth = 32;
   private cellHeight = 32;
@@ -84,7 +84,6 @@ export class GameScene extends Phaser.Scene {
     const w = this.scale.gameSize.width;
     const h = this.scale.gameSize.height;
     const horizontalPadding = 8;
-    const gap = 6;
 
     const rootStyle = getComputedStyle(document.documentElement);
     const safeTop = Number.parseInt(rootStyle.getPropertyValue('--safe-top'), 10);
@@ -92,21 +91,22 @@ export class GameScene extends Phaser.Scene {
     this.safeTop = Number.isFinite(safeTop) ? safeTop : 0;
     this.safeBottom = Number.isFinite(safeBottom) ? safeBottom : 0;
 
-    this.topPanelH = 54;
-    this.bottomPanelH = 170;
+    const playableH = h - this.safeTop - this.safeBottom;
+    this.topPanelH = 58;
+    this.bottomPanelH = Math.max(132, Math.floor(playableH * 0.2));
+    this.boardAreaH = Math.max(220, playableH - this.topPanelH - this.bottomPanelH);
 
     const maxBoardW = w - horizontalPadding * 2 - 10;
-    const maxBoardH = h - this.safeTop - this.safeBottom - this.topPanelH - this.bottomPanelH - gap * 4;
-    this.cellSize = Math.max(18, Math.floor(Math.min(maxBoardW / (GRID_W * CELL_WIDTH_RATIO), maxBoardH / (GRID_H * CELL_HEIGHT_RATIO))));
-    this.cellWidth = Math.floor(this.cellSize * CELL_WIDTH_RATIO);
-    this.cellHeight = Math.floor(this.cellSize * CELL_HEIGHT_RATIO);
+    const maxGridH = this.boardAreaH - 10;
+    this.cellSize = Math.max(18, Math.floor(Math.min(maxBoardW / GRID_W, maxGridH / GRID_H)));
 
     const boardWidth = this.cellWidth * GRID_W;
     const boardHeight = this.cellHeight * GRID_H;
 
     this.boardX = Math.floor((w - boardWidth) / 2);
-    this.boardY = this.safeTop + this.topPanelH + gap;
-    this.bottomY = this.boardY + boardHeight + gap;
+    this.boardY = this.safeTop + this.topPanelH;
+    this.gridY = this.boardY + Math.floor((this.boardAreaH - boardHeight) / 2);
+    this.bottomY = this.boardY + this.boardAreaH;
     this.panelWidth = Math.min(w - horizontalPadding * 2, boardWidth + 10);
   }
 
@@ -120,9 +120,9 @@ export class GameScene extends Phaser.Scene {
     this.add
       .rectangle(
         w / 2,
-        this.boardY + (GRID_H * this.cellHeight) / 2,
-        GRID_W * this.cellWidth + 10,
-        GRID_H * this.cellHeight + 10,
+        this.boardY + this.boardAreaH / 2,
+        GRID_W * this.cellSize + 10,
+        this.boardAreaH,
         0x0a1324
       )
       .setStrokeStyle(2, 0x476998, 0.95);
@@ -164,22 +164,23 @@ export class GameScene extends Phaser.Scene {
 
   private addBottomUi(): void {
     const left = Math.floor((this.scale.gameSize.width - this.panelWidth) / 2) + 12;
-    const dpadSize = 44;
-    const gap = 5;
-    const controlHeight = dpadSize * 3 + gap * 2;
-    const top = this.bottomY + this.bottomPanelH - controlHeight - 8;
+    const top = this.bottomY + 10;
+    const dpadGap = 6;
+    const contentH = Math.max(110, this.bottomPanelH - 20);
+    const dpadSize = Math.max(34, Math.min(48, Math.floor((contentH - dpadGap * 2) / 3)));
 
-    const centerX = left + dpadSize + gap;
-    const centerY = top + dpadSize + gap;
+    const centerX = left + dpadSize + dpadGap;
+    const centerY = top + dpadSize + dpadGap;
 
     this.makeButton(centerX, top, dpadSize, dpadSize, '↑', () => this.onMoveInput(DIRECTION.UP));
-    this.makeButton(centerX, top + (dpadSize + gap) * 2, dpadSize, dpadSize, '↓', () => this.onMoveInput(DIRECTION.DOWN));
+    this.makeButton(centerX, top + (dpadSize + dpadGap) * 2, dpadSize, dpadSize, '↓', () => this.onMoveInput(DIRECTION.DOWN));
     this.makeButton(left, centerY, dpadSize, dpadSize, '←', () => this.onMoveInput(DIRECTION.LEFT));
-    this.makeButton(left + (dpadSize + gap) * 2, centerY, dpadSize, dpadSize, '→', () => this.onMoveInput(DIRECTION.RIGHT));
+    this.makeButton(left + (dpadSize + dpadGap) * 2, centerY, dpadSize, dpadSize, '→', () => this.onMoveInput(DIRECTION.RIGHT));
 
-    const attackX = left + (dpadSize + gap) * 3 + 16;
-    const attackW = Math.min(120, this.panelWidth - (attackX - left) - 12);
-    this.makeRepeatingButton(attackX, top + 16, attackW, 68, '叩く', () => this.tryAttackForward());
+    const attackX = left + (dpadSize + dpadGap) * 3 + 16;
+    const attackW = Math.min(124, this.panelWidth - (attackX - left) - 12);
+    const attackH = Math.min(72, contentH - 12);
+    this.makeRepeatingButton(attackX, top + Math.floor((contentH - attackH) / 2), attackW, attackH, '叩く', () => this.tryAttackForward());
   }
 
   private createHelpModal(): Phaser.GameObjects.Container {
@@ -269,6 +270,10 @@ export class GameScene extends Phaser.Scene {
     };
 
     box.setInteractive({ useHandCursor: true }).on('pointerdown', () => {
+      if (repeatingEvent) {
+        return;
+      }
+
       box.setFillStyle(0x815631);
       onTrigger();
       repeatingEvent = this.time.addEvent({
@@ -279,6 +284,7 @@ export class GameScene extends Phaser.Scene {
     });
 
     box.on('pointerup', stopRepeat);
+    box.on('pointerupoutside', stopRepeat);
     box.on('pointerout', stopRepeat);
 
     return c;
@@ -303,8 +309,8 @@ export class GameScene extends Phaser.Scene {
       this.cellBg[y] = [];
       this.cellText[y] = [];
       for (let x = 0; x < GRID_W; x += 1) {
-        const px = this.boardX + x * this.cellWidth;
-        const py = this.boardY + y * this.cellHeight;
+        const px = this.boardX + x * this.cellSize;
+        const py = this.gridY + y * this.cellSize;
         const rect = this.add
           .rectangle(px, py, this.cellWidth - 2, this.cellHeight - 2, 0x4a556f)
           .setOrigin(0)
@@ -326,11 +332,10 @@ export class GameScene extends Phaser.Scene {
     this.playerMarker = this.add
       .text(0, 0, '', {
         color: PLAYER_MARKER_COLOR,
-        stroke: PLAYER_MARKER_OUTLINE_COLOR,
-        strokeThickness: 4,
-        fontSize: Math.min(this.cellWidth, this.cellHeight) >= 26 ? '18px' : '14px',
+        fontSize: this.cellSize >= 26 ? '18px' : '14px',
         fontStyle: 'bold'
       })
+      .setStroke(PLAYER_MARKER_STROKE_COLOR, this.cellSize >= 26 ? 4 : 3)
       .setOrigin(0.5)
       .setDepth(10);
 
@@ -447,8 +452,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   private redrawPlayer(): void {
-    const px = this.boardX + this.playerPos.x * this.cellWidth + this.cellWidth / 2;
-    const py = this.boardY + this.playerPos.y * this.cellHeight + this.cellHeight / 2;
+    const px = this.boardX + this.playerPos.x * this.cellSize + this.cellSize / 2;
+    const py = this.gridY + this.playerPos.y * this.cellSize + this.cellSize / 2;
     this.playerMarker.setPosition(px, py);
     this.playerMarker.setText(FACING_GLYPH[this.playerFacing]);
   }
