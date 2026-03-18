@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "render:gamescreen": "node scripts/render-gamescreen.mjs"
   },
   "dependencies": {
     "phaser": "^3.90.0"
