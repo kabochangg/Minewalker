@@ -23,6 +23,7 @@ const ACTIVE_BOARD_CONFIG = BOARD_CONFIG[DEFAULT_BOARD_DIFFICULTY];
 const MIN_CELL_SIZE = 24;
 const BOARD_FRAME_PADDING = 10;
 const MOVE_PAD_ACTIVE_TRAVEL_RATIO = 0.42;
+const MOVE_SWEEP_STEP_CELLS = 0.08;
 
 type MoveDirection = Direction;
 
@@ -115,6 +116,10 @@ export class GameScene extends Phaser.Scene {
     this.addBottomUi();
     this.addEndOverlay();
     this.newRun();
+
+    this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => this.updateMovePad(pointer));
+    this.input.on('pointerup', (pointer: Phaser.Input.Pointer) => this.stopMovePad(pointer));
+    this.input.on('gameout', () => this.forceStopMovePad());
 
     this.scale.on('resize', () => {
       this.scene.restart();
@@ -564,6 +569,10 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
+    this.forceStopMovePad();
+  }
+
+  private forceStopMovePad(): void {
     this.movePadOwnerPointerId = null;
     this.movePadVector = { dx: 0, dy: 0 };
     this.movePadDirection = null;
@@ -685,25 +694,10 @@ export class GameScene extends Phaser.Scene {
   private movePlayer(dx: number, dy: number): void {
     this.updateFacingFromVector(dx, dy);
 
-    let nextX = this.playerPos.x;
-    let nextY = this.playerPos.y;
+    const movedPosition = this.resolveMovement(dx, dy);
 
-    if (dx !== 0) {
-      const candidateX = this.playerPos.x + dx;
-      if (!this.collidesAt(candidateX, this.playerPos.y)) {
-        nextX = Phaser.Math.Clamp(candidateX, PLAYER_COLLISION_RADIUS_CELLS, this.gridWidth - 1 - PLAYER_COLLISION_RADIUS_CELLS);
-      }
-    }
-
-    if (dy !== 0) {
-      const candidateY = this.playerPos.y + dy;
-      if (!this.collidesAt(nextX, candidateY)) {
-        nextY = Phaser.Math.Clamp(candidateY, PLAYER_COLLISION_RADIUS_CELLS, this.gridHeight - 1 - PLAYER_COLLISION_RADIUS_CELLS);
-      }
-    }
-
-    if (nextX !== this.playerPos.x || nextY !== this.playerPos.y) {
-      this.playerPos = { x: nextX, y: nextY };
+    if (movedPosition.x !== this.playerPos.x || movedPosition.y !== this.playerPos.y) {
+      this.playerPos = movedPosition;
       this.checkGoalReached();
       this.redrawPlayer();
       this.refreshUi();
@@ -712,6 +706,37 @@ export class GameScene extends Phaser.Scene {
 
     this.redrawPlayer();
     this.refreshUi();
+  }
+
+  private resolveMovement(dx: number, dy: number): Position {
+    const totalDistance = Math.hypot(dx, dy);
+    if (totalDistance === 0) {
+      return this.playerPos;
+    }
+
+    const sweepSteps = Math.max(1, Math.ceil(totalDistance / MOVE_SWEEP_STEP_CELLS));
+    const stepX = dx / sweepSteps;
+    const stepY = dy / sweepSteps;
+    let nextX = this.playerPos.x;
+    let nextY = this.playerPos.y;
+
+    for (let i = 0; i < sweepSteps; i += 1) {
+      const candidateX = nextX + stepX;
+      if (!this.collidesAt(candidateX, nextY)) {
+        nextX = this.clampPlayerAxis(candidateX, this.gridWidth);
+      }
+
+      const candidateY = nextY + stepY;
+      if (!this.collidesAt(nextX, candidateY)) {
+        nextY = this.clampPlayerAxis(candidateY, this.gridHeight);
+      }
+    }
+
+    return { x: nextX, y: nextY };
+  }
+
+  private clampPlayerAxis(value: number, maxCells: number): number {
+    return Phaser.Math.Clamp(value, PLAYER_COLLISION_RADIUS_CELLS, maxCells - 1 - PLAYER_COLLISION_RADIUS_CELLS);
   }
 
   private tryAttackForward(): void {
