@@ -1,6 +1,11 @@
 export const INPUT_REPEAT_INTERVAL_MS = 250;
 export const INPUT_HIT_PADDING_PX = 14;
 export const INITIAL_PLAYER_HP = 3;
+export const MOVE_SPEED_CELLS_PER_SECOND = 2.5;
+export const PLAYER_COLLISION_RADIUS_CELLS = 0.3;
+export const ATTACK_BOX_FORWARD_OFFSET_CELLS = 0.75;
+export const ATTACK_BOX_SIZE_CELLS = 0.7;
+export const ATTACK_BOX_DEPTH_CELLS = 1.7;
 
 export const PLAYER_MARKER_STYLE = {
   color: '#ffffff',
@@ -15,9 +20,10 @@ export const PLAYER_MARKER_STYLE = {
 } as const;
 
 export const HELP_MODAL_COPY = [
-  '・十字キーで移動する',
-  '・進めなくても向きだけ変わる',
-  '・叩くで正面の壁を壊す',
+  '・十字キー長押しでなめらかに移動する',
+  '・2方向同時押しで斜め移動できる',
+  '・進めなくても向きだけ先に変わる',
+  '・叩く長押しで正面の壁を連続で壊す',
   '・0は周囲が安全で自動で広がる',
   '・数字は周囲8マスの地雷数',
   '・ゴールを開いて乗るとクリア'

@@ -1,21 +1,39 @@
 import Phaser from 'phaser';
 import { BOARD_CONFIG, DEFAULT_BOARD_DIFFICULTY } from './boardConfig';
 import {
+  ATTACK_BOX_DEPTH_CELLS,
+  ATTACK_BOX_FORWARD_OFFSET_CELLS,
+  ATTACK_BOX_SIZE_CELLS,
   BOARD_DIVIDER_STYLE,
   GAME_OVERLAY_STYLE,
   HELP_MODAL_COPY,
+  INITIAL_PLAYER_HP,
   INPUT_HIT_PADDING_PX,
   INPUT_REPEAT_INTERVAL_MS,
-  INITIAL_PLAYER_HP,
+  MOVE_SPEED_CELLS_PER_SECOND,
+  PLAYER_COLLISION_RADIUS_CELLS,
   PLAYER_MARKER_STYLE
 } from './constants';
-import { addDirectionOffset, DIRECTION, type Direction, type Position } from './direction';
+import { DIRECTION, DIRECTION_OFFSET, type Direction, type Position } from './direction';
 import { generateBoard } from './boardGenerator';
 import { GOAL_STATE, TILE_KIND, type Tile } from './types';
 
 const ACTIVE_BOARD_CONFIG = BOARD_CONFIG[DEFAULT_BOARD_DIFFICULTY];
 const MIN_CELL_SIZE = 24;
 const BOARD_FRAME_PADDING = 10;
+
+type MoveDirection = Direction;
+
+type MoveButtonRef = {
+  box: Phaser.GameObjects.Rectangle;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  direction: MoveDirection;
+  activate: (pointer: Phaser.Input.Pointer) => void;
+  release: (pointerId?: number) => void;
+};
 
 const NUMBER_COLORS: Record<number, string> = {
   1: '#4ea7ff',
@@ -30,9 +48,13 @@ const NUMBER_COLORS: Record<number, string> = {
 
 const FACING_GLYPH: Record<Direction, string> = {
   [DIRECTION.UP]: '↑',
+  [DIRECTION.UP_RIGHT]: '↗',
+  [DIRECTION.RIGHT]: '→',
+  [DIRECTION.DOWN_RIGHT]: '↘',
   [DIRECTION.DOWN]: '↓',
+  [DIRECTION.DOWN_LEFT]: '↙',
   [DIRECTION.LEFT]: '←',
-  [DIRECTION.RIGHT]: '→'
+  [DIRECTION.UP_LEFT]: '↖'
 };
 
 export class GameScene extends Phaser.Scene {
@@ -58,8 +80,9 @@ export class GameScene extends Phaser.Scene {
   private endOverlaySubText!: Phaser.GameObjects.Text;
   private moveInputEnabled = true;
   private attackInputEnabled = true;
-  private activeInputOwnership: Partial<Record<'move' | 'attack', { pointerId: number; stop: () => void }>> = {};
-  private moveButtonRefs: Array<{ box: Phaser.GameObjects.Rectangle; x: number; y: number; w: number; h: number }> = [];
+  private activeInputOwnership: Partial<Record<'attack', { pointerId: number; stop: () => void }>> = {};
+  private moveButtonRefs: MoveButtonRef[] = [];
+  private activeMovePointers = new Map<number, MoveDirection>();
 
   private playerMarker!: Phaser.GameObjects.Text;
 
@@ -102,6 +125,20 @@ export class GameScene extends Phaser.Scene {
     this.scale.on('resize', () => {
       this.scene.restart();
     });
+  }
+
+  update(_time: number, delta: number): void {
+    if (this.gameEnded || !this.moveInputEnabled) {
+      return;
+    }
+
+    const movement = this.getMoveVector();
+    if (movement.dx === 0 && movement.dy === 0) {
+      return;
+    }
+
+    const step = MOVE_SPEED_CELLS_PER_SECOND * (delta / 1000);
+    this.movePlayer(movement.dx * step, movement.dy * step);
   }
 
   private computeLayout(): void {
@@ -232,62 +269,10 @@ export class GameScene extends Phaser.Scene {
     const centerX = left + dpadSize + dpadGap;
     const centerY = top + dpadSize + dpadGap;
 
-    this.makeRepeatingButton(
-      centerX,
-      top,
-      dpadSize,
-      dpadSize,
-      '↑',
-      () => this.onMoveInput(DIRECTION.UP),
-      0x2a385a,
-      0x3a4d73,
-      '#f1f7ff',
-      16,
-      INPUT_REPEAT_INTERVAL_MS,
-      'move'
-    );
-    this.makeRepeatingButton(
-      centerX,
-      top + (dpadSize + dpadGap) * 2,
-      dpadSize,
-      dpadSize,
-      '↓',
-      () => this.onMoveInput(DIRECTION.DOWN),
-      0x2a385a,
-      0x3a4d73,
-      '#f1f7ff',
-      16,
-      INPUT_REPEAT_INTERVAL_MS,
-      'move'
-    );
-    this.makeRepeatingButton(
-      left,
-      centerY,
-      dpadSize,
-      dpadSize,
-      '←',
-      () => this.onMoveInput(DIRECTION.LEFT),
-      0x2a385a,
-      0x3a4d73,
-      '#f1f7ff',
-      16,
-      INPUT_REPEAT_INTERVAL_MS,
-      'move'
-    );
-    this.makeRepeatingButton(
-      left + (dpadSize + dpadGap) * 2,
-      centerY,
-      dpadSize,
-      dpadSize,
-      '→',
-      () => this.onMoveInput(DIRECTION.RIGHT),
-      0x2a385a,
-      0x3a4d73,
-      '#f1f7ff',
-      16,
-      INPUT_REPEAT_INTERVAL_MS,
-      'move'
-    );
+    this.makeMoveButton(centerX, top, dpadSize, dpadSize, '↑', DIRECTION.UP);
+    this.makeMoveButton(centerX, top + (dpadSize + dpadGap) * 2, dpadSize, dpadSize, '↓', DIRECTION.DOWN);
+    this.makeMoveButton(left, centerY, dpadSize, dpadSize, '←', DIRECTION.LEFT);
+    this.makeMoveButton(left + (dpadSize + dpadGap) * 2, centerY, dpadSize, dpadSize, '→', DIRECTION.RIGHT);
 
     const attackX = left + (dpadSize + dpadGap) * 3 + 16;
     const attackW = Math.min(124, this.panelWidth - (attackX - left) - 12);
@@ -412,6 +397,88 @@ export class GameScene extends Phaser.Scene {
     return c;
   }
 
+  private makeMoveButton(
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    label: string,
+    direction: MoveDirection
+  ): Phaser.GameObjects.Container {
+    const idleColor = 0x2a385a;
+    const activeColor = 0x3a4d73;
+    const box = this.add
+      .rectangle(0, 0, w, h, idleColor)
+      .setOrigin(0)
+      .setStrokeStyle(1, 0xc08b55, 0.95);
+    const text = this.add
+      .text(w / 2, h / 2, label, { color: '#f1f7ff', fontSize: '16px', fontStyle: 'bold' })
+      .setOrigin(0.5);
+    const c = this.add.container(x, y, [box, text]);
+    const pointerIds = new Set<number>();
+
+    const refreshVisual = () => {
+      const active = pointerIds.size > 0 && this.moveInputEnabled;
+      box.setFillStyle(active ? activeColor : idleColor);
+      text.setY(h / 2 + (active ? 1 : 0));
+    };
+
+    const activate = (pointer: Phaser.Input.Pointer) => {
+      if (!this.moveInputEnabled) {
+        return;
+      }
+      const previousDirection = this.activeMovePointers.get(pointer.id);
+      if (previousDirection && previousDirection !== direction) {
+        this.releaseMovePointer(pointer.id, previousDirection);
+      }
+      this.activeMovePointers.set(pointer.id, direction);
+      pointerIds.add(pointer.id);
+      this.playerFacing = direction;
+      refreshVisual();
+      this.redrawPlayer();
+      this.refreshUi();
+    };
+
+    const release = (pointerId?: number) => {
+      if (pointerId === undefined) {
+        pointerIds.forEach((id) => {
+          if (this.activeMovePointers.get(id) === direction) {
+            this.activeMovePointers.delete(id);
+          }
+        });
+        pointerIds.clear();
+      } else {
+        pointerIds.delete(pointerId);
+        if (this.activeMovePointers.get(pointerId) === direction) {
+          this.activeMovePointers.delete(pointerId);
+        }
+      }
+      refreshVisual();
+    };
+
+    box
+      .setInteractive(
+        new Phaser.Geom.Rectangle(-INPUT_HIT_PADDING_PX, -INPUT_HIT_PADDING_PX, w + INPUT_HIT_PADDING_PX * 2, h + INPUT_HIT_PADDING_PX * 2),
+        Phaser.Geom.Rectangle.Contains
+      )
+      .on('pointerdown', (pointer: Phaser.Input.Pointer) => activate(pointer))
+      .on('pointerover', (pointer: Phaser.Input.Pointer) => {
+        if (pointer.isDown) {
+          activate(pointer);
+        }
+      })
+      .on('pointerup', (pointer: Phaser.Input.Pointer) => release(pointer.id))
+      .on('pointerupoutside', (pointer: Phaser.Input.Pointer) => release(pointer.id))
+      .on('pointerout', (pointer: Phaser.Input.Pointer) => {
+        if (!pointer.isDown) {
+          release(pointer.id);
+        }
+      });
+
+    this.moveButtonRefs.push({ box, x, y, w, h, direction, activate, release });
+    return c;
+  }
+
   private makeRepeatingButton(
     x: number,
     y: number,
@@ -424,7 +491,7 @@ export class GameScene extends Phaser.Scene {
     textColor: string,
     fontSize: number,
     repeatIntervalMs: number,
-    inputChannel: 'move' | 'attack'
+    inputChannel: 'attack'
   ): Phaser.GameObjects.Container {
     const box = this.add
       .rectangle(0, 0, w, h, idleColor)
@@ -438,7 +505,7 @@ export class GameScene extends Phaser.Scene {
     let repeatingEvent: Phaser.Time.TimerEvent | null = null;
     let activePointerId: number | null = null;
 
-    const canTrigger = () => (inputChannel === 'move' ? this.moveInputEnabled : this.attackInputEnabled);
+    const canTrigger = () => this.attackInputEnabled;
     const clearOwnership = () => {
       if (this.activeInputOwnership[inputChannel]?.stop === stopRepeat) {
         delete this.activeInputOwnership[inputChannel];
@@ -500,42 +567,15 @@ export class GameScene extends Phaser.Scene {
         startRepeat(pointer);
       });
 
-    if (inputChannel === 'move') {
-      box.on('pointerover', (pointer: Phaser.Input.Pointer) => {
-        if (!pointer.isDown) {
-          return;
-        }
-
-        const currentOwner = this.activeInputOwnership.move;
-        if (currentOwner?.pointerId === pointer.id) {
-          startRepeat(pointer);
-        }
-      });
-    }
-
     box.on('pointerup', (pointer: Phaser.Input.Pointer) => stopRepeat(pointer.id));
     box.on('pointerupoutside', (pointer: Phaser.Input.Pointer) => stopRepeat(pointer.id));
-    box.on('pointerout', (pointer: Phaser.Input.Pointer) => {
-      if (inputChannel === 'move' && pointer.isDown && this.activeInputOwnership.move?.pointerId === pointer.id) {
-        return;
-      }
-      stopRepeat(pointer.id);
-    });
-
-    if (inputChannel === 'move') {
-      this.moveButtonRefs.push({ box, x, y, w, h });
-    }
+    box.on('pointerout', (pointer: Phaser.Input.Pointer) => stopRepeat(pointer.id));
 
     return c;
   }
 
   private handleMoveSlide(pointer: Phaser.Input.Pointer): void {
-    if (!pointer.isDown) {
-      return;
-    }
-
-    const owner = this.activeInputOwnership.move;
-    if (!owner || owner.pointerId !== pointer.id) {
+    if (!pointer.isDown || !this.moveInputEnabled) {
       return;
     }
 
@@ -552,7 +592,15 @@ export class GameScene extends Phaser.Scene {
       )
     );
 
-    hoveredButton?.box.emit('pointerover', pointer);
+    if (hoveredButton) {
+      hoveredButton.activate(pointer);
+      return;
+    }
+
+    const direction = this.activeMovePointers.get(pointer.id);
+    if (direction) {
+      this.releaseMovePointer(pointer.id, direction);
+    }
   }
 
   private newRun(): void {
@@ -613,14 +661,32 @@ export class GameScene extends Phaser.Scene {
     this.refreshUi();
   }
 
-  private onMoveInput(direction: Direction): void {
-    if (this.gameEnded) return;
-    this.playerFacing = direction;
+  private movePlayer(dx: number, dy: number): void {
+    this.updateFacingFromVector(dx, dy);
 
-    const nextPos = addDirectionOffset(this.playerPos, direction);
-    if (this.isPassable(nextPos.x, nextPos.y)) {
-      this.playerPos = nextPos;
+    let nextX = this.playerPos.x;
+    let nextY = this.playerPos.y;
+
+    if (dx !== 0) {
+      const candidateX = this.playerPos.x + dx;
+      if (!this.collidesAt(candidateX, this.playerPos.y)) {
+        nextX = Phaser.Math.Clamp(candidateX, PLAYER_COLLISION_RADIUS_CELLS, this.gridWidth - 1 - PLAYER_COLLISION_RADIUS_CELLS);
+      }
+    }
+
+    if (dy !== 0) {
+      const candidateY = this.playerPos.y + dy;
+      if (!this.collidesAt(nextX, candidateY)) {
+        nextY = Phaser.Math.Clamp(candidateY, PLAYER_COLLISION_RADIUS_CELLS, this.gridHeight - 1 - PLAYER_COLLISION_RADIUS_CELLS);
+      }
+    }
+
+    if (nextX !== this.playerPos.x || nextY !== this.playerPos.y) {
+      this.playerPos = { x: nextX, y: nextY };
       this.checkGoalReached();
+      this.redrawPlayer();
+      this.refreshUi();
+      return;
     }
 
     this.redrawPlayer();
@@ -628,10 +694,10 @@ export class GameScene extends Phaser.Scene {
   }
 
   private tryAttackForward(): void {
-    if (this.gameEnded) return;
+    if (this.gameEnded || !this.attackInputEnabled) return;
 
-    const target = addDirectionOffset(this.playerPos, this.playerFacing);
-    if (!this.inRange(target.x, target.y)) return;
+    const target = this.findAttackTarget();
+    if (!target) return;
 
     const targetTile = this.grid[target.y][target.x];
     if (targetTile.isOpen) return;
@@ -662,6 +728,49 @@ export class GameScene extends Phaser.Scene {
     const openedPositions = this.expandOpenAreaFrom(target);
     this.redrawCells(openedPositions);
     this.refreshUi();
+  }
+
+  private findAttackTarget(): Position | null {
+    const facingOffset = DIRECTION_OFFSET[this.playerFacing];
+    const boxCenterX = this.playerPos.x + facingOffset.x * ATTACK_BOX_FORWARD_OFFSET_CELLS;
+    const boxCenterY = this.playerPos.y + facingOffset.y * ATTACK_BOX_FORWARD_OFFSET_CELLS;
+    const halfSize = ATTACK_BOX_SIZE_CELLS / 2;
+    const candidates: Array<{ position: Position; distance: number }> = [];
+
+    const minX = Math.max(0, Math.floor(boxCenterX - ATTACK_BOX_DEPTH_CELLS));
+    const maxX = Math.min(this.gridWidth - 1, Math.ceil(boxCenterX + ATTACK_BOX_DEPTH_CELLS));
+    const minY = Math.max(0, Math.floor(boxCenterY - ATTACK_BOX_DEPTH_CELLS));
+    const maxY = Math.min(this.gridHeight - 1, Math.ceil(boxCenterY + ATTACK_BOX_DEPTH_CELLS));
+
+    for (let y = minY; y <= maxY; y += 1) {
+      for (let x = minX; x <= maxX; x += 1) {
+        const tile = this.grid[y][x];
+        if (tile.isOpen) {
+          continue;
+        }
+
+        const tileMinX = x;
+        const tileMaxX = x + 1;
+        const tileMinY = y;
+        const tileMaxY = y + 1;
+
+        const intersects =
+          tileMaxX >= boxCenterX - halfSize &&
+          tileMinX <= boxCenterX + halfSize &&
+          tileMaxY >= boxCenterY - halfSize &&
+          tileMinY <= boxCenterY + halfSize;
+
+        if (!intersects) {
+          continue;
+        }
+
+        const distance = Phaser.Math.Distance.Between(this.playerPos.x, this.playerPos.y, x + 0.5, y + 0.5);
+        candidates.push({ position: { x, y }, distance });
+      }
+    }
+
+    candidates.sort((a, b) => a.distance - b.distance);
+    return candidates[0]?.position ?? null;
   }
 
   private expandOpenAreaFrom(origin: Position): Position[] {
@@ -732,7 +841,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   private checkGoalReached(): void {
-    const tile = this.grid[this.playerPos.y][this.playerPos.x];
+    const currentCell = this.getPlayerCell();
+    const tile = this.grid[currentCell.y][currentCell.x];
     if (tile.goalState === GOAL_STATE.REVEALED) {
       this.setEndState(true);
     }
@@ -748,12 +858,14 @@ export class GameScene extends Phaser.Scene {
     this.endOverlayPanel.setVisible(true);
     this.endOverlayMessage.setVisible(true);
     this.endOverlaySubText.setVisible(true);
+    this.refreshUi();
   }
 
   private lockInputs(): void {
     this.moveInputEnabled = false;
     this.attackInputEnabled = false;
-    this.activeInputOwnership.move?.stop();
+    this.activeMovePointers.clear();
+    this.moveButtonRefs.forEach((button) => button.release());
     this.activeInputOwnership.attack?.stop();
     this.activeInputOwnership = {};
   }
@@ -761,7 +873,8 @@ export class GameScene extends Phaser.Scene {
   private unlockInputs(): void {
     this.moveInputEnabled = true;
     this.attackInputEnabled = true;
-    this.activeInputOwnership.move?.stop();
+    this.activeMovePointers.clear();
+    this.moveButtonRefs.forEach((button) => button.release());
     this.activeInputOwnership.attack?.stop();
     this.activeInputOwnership = {};
     if (this.endOverlay) {
@@ -823,8 +936,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   private redrawPlayer(): void {
-    const px = this.boardX + this.playerPos.x * this.cellSize + this.cellSize / 2;
-    const py = this.gridY + this.playerPos.y * this.cellSize + this.cellSize / 2;
+    const px = this.boardX + (this.playerPos.x + 0.5) * this.cellSize;
+    const py = this.gridY + (this.playerPos.y + 0.5) * this.cellSize;
     this.playerMarker.setPosition(px, py);
     this.playerMarker.setText(FACING_GLYPH[this.playerFacing]);
   }
@@ -842,9 +955,88 @@ export class GameScene extends Phaser.Scene {
     this.statusText.setText(`向き ${FACING_GLYPH[this.playerFacing]}`);
   }
 
-  private isPassable(x: number, y: number): boolean {
-    if (!this.inRange(x, y)) return false;
-    return this.grid[y][x].isOpen;
+  private getMoveVector(): { dx: number; dy: number } {
+    let dx = 0;
+    let dy = 0;
+
+    this.activeMovePointers.forEach((direction) => {
+      const offset = DIRECTION_OFFSET[direction];
+      dx += offset.x;
+      dy += offset.y;
+    });
+
+    dx = Phaser.Math.Clamp(dx, -1, 1);
+    dy = Phaser.Math.Clamp(dy, -1, 1);
+
+    if (dx !== 0 || dy !== 0) {
+      const length = Math.hypot(dx, dy);
+      dx /= length;
+      dy /= length;
+    }
+
+    return { dx, dy };
+  }
+
+  private updateFacingFromVector(dx: number, dy: number): void {
+    if (dx === 0 && dy === 0) {
+      return;
+    }
+
+    const horizontal = dx > 0.2 ? 'RIGHT' : dx < -0.2 ? 'LEFT' : null;
+    const vertical = dy > 0.2 ? 'DOWN' : dy < -0.2 ? 'UP' : null;
+
+    if (horizontal && vertical) {
+      this.playerFacing = DIRECTION[`${vertical}_${horizontal}` as keyof typeof DIRECTION];
+      return;
+    }
+
+    if (horizontal) {
+      this.playerFacing = DIRECTION[horizontal];
+      return;
+    }
+
+    if (vertical) {
+      this.playerFacing = DIRECTION[vertical];
+    }
+  }
+
+  private collidesAt(x: number, y: number): boolean {
+    const minX = Math.floor(x - PLAYER_COLLISION_RADIUS_CELLS);
+    const maxX = Math.floor(x + PLAYER_COLLISION_RADIUS_CELLS);
+    const minY = Math.floor(y - PLAYER_COLLISION_RADIUS_CELLS);
+    const maxY = Math.floor(y + PLAYER_COLLISION_RADIUS_CELLS);
+
+    for (let tileY = minY; tileY <= maxY; tileY += 1) {
+      for (let tileX = minX; tileX <= maxX; tileX += 1) {
+        if (!this.inRange(tileX, tileY)) {
+          return true;
+        }
+        if (this.grid[tileY][tileX].isOpen) {
+          continue;
+        }
+
+        const closestX = Phaser.Math.Clamp(x, tileX, tileX + 1);
+        const closestY = Phaser.Math.Clamp(y, tileY, tileY + 1);
+        const distance = Phaser.Math.Distance.Between(x, y, closestX, closestY);
+        if (distance < PLAYER_COLLISION_RADIUS_CELLS) {
+          return true;
+        }
+      }
+    }
+
+    return false;
+  }
+
+  private getPlayerCell(): Position {
+    return {
+      x: Phaser.Math.Clamp(Math.floor(this.playerPos.x + 0.5), 0, this.gridWidth - 1),
+      y: Phaser.Math.Clamp(Math.floor(this.playerPos.y + 0.5), 0, this.gridHeight - 1)
+    };
+  }
+
+  private releaseMovePointer(pointerId: number, direction: MoveDirection): void {
+    const button = this.moveButtonRefs.find((item) => item.direction === direction);
+    button?.release(pointerId);
   }
 
   private inRange(x: number, y: number): boolean {
