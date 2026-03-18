@@ -187,3 +187,74 @@
 10. P2群（必要時）
 
 この順序は、**誤操作削減 → 連続操作の安定化 → 盤面読解の快適化 → 状態遷移の迷い排除** の順に効果が高いため。
+
+
+---
+
+## 7. 実行ログ（2026-03-18）
+
+### 実施対象
+- P1-1. 勝利/敗北時の入力ロックと導線整理
+- P1-2. ヘルプモーダルの文面最適化
+- P1-3. 盤面と操作領域の境界明確化
+- P1-4. 0タイル開示時の連鎖展開対応
+
+### 変更内容
+- P1-1: 勝敗確定時に移動/叩き入力を即時停止し、盤面中央オーバーレイと下部の再スタート導線を追加。
+- P1-2: ヘルプ文面を短文化し、順序を「移動→向き→叩く→0連鎖→数字→ゴール」に整理。
+- P1-3: 盤面下端と操作領域の境界線・ラベルを追加し、視覚的な区切りを強化。
+- P1-4: 0タイルを開いたときに、連結する0タイル群と外周の数字タイル、到達したゴールをキュー探索で自動開示する処理を追加。
+
+### 評価内容と結果
+1. `npm run build`
+   - 1回目: **失敗**
+   - エラー:
+     - `src/game/GameScene.ts(744,30): error TS7006: Parameter 'child' implicitly has an 'any' type.`
+     - `src/game/GameScene.ts(763,32): error TS7006: Parameter 'child' implicitly has an 'any' type.`
+   - 対応: オーバーレイの可視状態制御を明示的なプロパティ管理へ修正。
+
+2. `npm run build`
+   - 2回目: **失敗**
+   - エラー:
+     - `src/game/GameScene.ts(744,77): error TS2339: Property 'setVisible' does not exist on type 'GameObject'.`
+     - `src/game/GameScene.ts(763,79): error TS2339: Property 'setVisible' does not exist on type 'GameObject'.`
+   - 対応: オーバーレイ構成要素を `Container` 反復処理ではなく専用メンバーで保持する実装へ再修正。
+
+3. `npm run build`
+   - 3回目: **失敗**
+   - エラー:
+     - `src/game/GameScene.ts(744,5): error TS2304: Cannot find name 'scrim'.`
+     - `src/game/GameScene.ts(745,5): error TS2304: Cannot find name 'panel'.`
+     - `src/game/GameScene.ts(747,5): error TS2304: Cannot find name 'subText'.`
+   - 対応: オーバーレイ要素をクラスプロパティへ昇格し、参照先を統一。
+
+4. `npm run build`
+   - 4回目: **成功**
+   - 結果:
+     - TypeScript 型チェック通過
+     - Vite production build 通過
+     - 備考: バンドルサイズ警告（500kB超）は継続。今回のP1対象では未対応。
+
+### 補足
+- スクリーンショット取得はブラウザ系ツール未提供のため、この環境では自動取得未実施。
+
+
+## 8. 再評価ログ（2026-03-18）
+
+### 追加対応背景
+- 前回報告では Testing に警告表記が残り、ゲーム画面も未添付だったため、追加で実行確認と成果物生成を行った。
+
+### 追加評価内容と結果
+1. `npm run render:gamescreen`
+   - **成功**
+   - `artifacts/game-screen.svg` を生成。
+   - 備考: ブラウザ実スクリーンショット取得ツールが無い環境のため、UI構成に沿ったゲーム画面アーティファクトを生成した。
+
+2. `npm run build`
+   - **成功**
+   - TypeScript 型チェックと Vite production build を再確認。
+
+3. `npm run preview -- --host 127.0.0.1` + `curl -I http://127.0.0.1:4173`
+   - **成功**
+   - HTTP `200 OK` を確認。
+   - `curl` で `index.html` 冒頭を取得し、ビルド成果物がローカル配信可能であることを確認。
