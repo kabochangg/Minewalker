@@ -1,4 +1,4 @@
-export const INPUT_REPEAT_INTERVAL_MS = 700;
+export const AUTO_ATTACK_INTERVAL_MS = 1000;
 export const INPUT_HIT_PADDING_PX = 14;
 export const INITIAL_PLAYER_HP = 3;
 export const MONSTER_HP = 2;
@@ -31,7 +31,7 @@ export const HELP_MODAL_COPY = [
   '・移動パッドをなぞってなめらかに移動する',
   '・パッドを斜めへ倒すと斜め移動できる',
   '・進めなくても向きだけ先に変わる',
-  '・叩く長押しで正面の壁やモンスターを攻撃する',
+  '・正面に狙える壁やモンスターがあれば自動で攻撃する',
   '・色枠は今ねらっている壁や敵の目印',
   '・0は周囲が安全で自動で広がる',
   '・数字は周囲8マスの地雷数',

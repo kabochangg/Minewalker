@@ -9,7 +9,7 @@ import {
   HELP_MODAL_COPY,
   INITIAL_PLAYER_HP,
   INPUT_HIT_PADDING_PX,
-  INPUT_REPEAT_INTERVAL_MS,
+  AUTO_ATTACK_INTERVAL_MS,
   MONSTER_HP,
   MONSTER_MARKER_STYLE,
   MONSTER_COLLISION_RADIUS_CELLS,
@@ -82,7 +82,7 @@ export class GameScene extends Phaser.Scene {
   private nextStageButton!: Phaser.GameObjects.Container;
   private moveInputEnabled = true;
   private attackInputEnabled = true;
-  private activeInputOwnership: Partial<Record<'attack', { pointerId: number; stop: () => void }>> = {};
+  private autoAttackTimer: Phaser.Time.TimerEvent | null = null;
   private movePadOwnerPointerId: number | null = null;
   private movePadVector = { dx: 0, dy: 0 };
   private movePadDirection: MoveDirection | null = null;
@@ -128,6 +128,8 @@ export class GameScene extends Phaser.Scene {
     this.addBottomUi();
     this.addEndOverlay();
     this.newRun();
+
+    this.startAutoAttack();
 
     this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => this.updateMovePad(pointer));
     this.input.on('pointerup', (pointer: Phaser.Input.Pointer) => this.stopMovePad(pointer));
@@ -288,18 +290,14 @@ export class GameScene extends Phaser.Scene {
 
     this.makeMovePad(padCenterX, padCenterY, padRadius);
 
-    this.makeRepeatingCircleButton(
+    this.makeCircleButton(
       attackCenterX,
       attackCenterY,
       attackRadius,
-      '叩く',
-      () => this.tryAttackForward(),
-      0x644022,
-      0x815631,
-      '#fff4df',
-      18,
-      INPUT_REPEAT_INTERVAL_MS,
-      'attack'
+      'AUTO',
+      0x37506f,
+      '#dff3ff',
+      18
     );
 
     this.restartCtaText = this.add
@@ -440,95 +438,21 @@ export class GameScene extends Phaser.Scene {
     return c;
   }
 
-  private makeRepeatingCircleButton(
+  private makeCircleButton(
     centerX: number,
     centerY: number,
     radius: number,
     label: string,
-    onTrigger: () => void,
-    idleColor: number,
-    activeColor: number,
+    fillColor: number,
     textColor: string,
-    fontSize: number,
-    repeatIntervalMs: number,
-    inputChannel: 'attack'
+    fontSize: number
   ): Phaser.GameObjects.Container {
-    const box = this.add.circle(0, 0, radius, idleColor).setStrokeStyle(2, 0xc08b55, 0.95);
+    const box = this.add.circle(0, 0, radius, fillColor).setStrokeStyle(2, 0x86c5ff, 0.95);
     const text = this.add
       .text(0, 0, label, { color: textColor, fontSize: `${fontSize}px`, fontStyle: 'bold' })
       .setOrigin(0.5);
-    const c = this.add.container(centerX, centerY, [box, text]);
 
-    let repeatingEvent: Phaser.Time.TimerEvent | null = null;
-    let activePointerId: number | null = null;
-
-    const canTrigger = () => this.attackInputEnabled;
-    const clearOwnership = () => {
-      if (this.activeInputOwnership[inputChannel]?.stop === stopRepeat) {
-        delete this.activeInputOwnership[inputChannel];
-      }
-    };
-
-    const stopRepeat = (pointerId?: number) => {
-      if (pointerId !== undefined && activePointerId !== pointerId) {
-        return;
-      }
-
-      repeatingEvent?.remove(false);
-      repeatingEvent = null;
-      activePointerId = null;
-      clearOwnership();
-      box.setFillStyle(idleColor);
-      text.setY(0);
-    };
-
-    const startRepeat = (pointer: Phaser.Input.Pointer) => {
-      if (!canTrigger()) {
-        return;
-      }
-
-      const currentOwner = this.activeInputOwnership[inputChannel];
-      if (currentOwner?.pointerId === pointer.id && repeatingEvent) {
-        return;
-      }
-
-      currentOwner?.stop();
-
-      activePointerId = pointer.id;
-      this.activeInputOwnership[inputChannel] = {
-        pointerId: pointer.id,
-        stop: stopRepeat
-      };
-      box.setFillStyle(activeColor);
-      text.setY(1);
-      onTrigger();
-      repeatingEvent = this.time.addEvent({
-        delay: repeatIntervalMs,
-        loop: true,
-        callback: () => {
-          if (!canTrigger() || this.activeInputOwnership[inputChannel]?.stop !== stopRepeat) {
-            stopRepeat();
-            return;
-          }
-          onTrigger();
-        }
-      });
-    };
-
-    box
-      .setInteractive(
-        new Phaser.Geom.Circle(0, 0, radius + INPUT_HIT_PADDING_PX),
-        Phaser.Geom.Circle.Contains
-      )
-      .on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-        startRepeat(pointer);
-      });
-
-    box.on('pointerup', (pointer: Phaser.Input.Pointer) => stopRepeat(pointer.id));
-    box.on('pointerupoutside', (pointer: Phaser.Input.Pointer) => stopRepeat(pointer.id));
-    box.on('pointerout', (pointer: Phaser.Input.Pointer) => stopRepeat(pointer.id));
-
-    return c;
+    return this.add.container(centerX, centerY, [box, text]);
   }
 
   private startMovePad(pointer: Phaser.Input.Pointer): void {
@@ -654,6 +578,21 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  private startAutoAttack(): void {
+    this.autoAttackTimer?.remove(false);
+    this.autoAttackTimer = this.time.addEvent({
+      delay: AUTO_ATTACK_INTERVAL_MS,
+      loop: true,
+      callback: () => {
+        if (!this.attackInputEnabled || this.gameEnded) {
+          return;
+        }
+
+        this.tryAttackForward();
+      }
+    });
+  }
+
   private newRun(): void {
     this.unlockInputs();
     this.gameEnded = false;
@@ -746,10 +685,10 @@ export class GameScene extends Phaser.Scene {
     const projectile = this.add.circle(
       this.boardX + this.playerPos.x * this.cellSize,
       this.gridY + this.playerPos.y * this.cellSize,
-      Math.max(3, Math.floor(this.cellSize * 0.1)),
-      0xffdc8d,
+      Math.max(4, Math.floor(this.cellSize * 0.11)),
+      0x45f0ff,
       1
-    ).setDepth(12).setStrokeStyle(1, 0xfff6d6, 1);
+    ).setDepth(12).setStrokeStyle(2, 0xd8feff, 1);
 
     const targetX = this.boardX + (target.kind === 'monster' ? target.monster.pos.x : target.position.x + 0.5) * this.cellSize;
     const targetY = this.gridY + (target.kind === 'monster' ? target.monster.pos.y : target.position.y + 0.5) * this.cellSize;
@@ -984,8 +923,6 @@ export class GameScene extends Phaser.Scene {
     this.movePadVector = { dx: 0, dy: 0 };
     this.movePadDirection = null;
     this.refreshMovePadVisuals();
-    this.activeInputOwnership.attack?.stop();
-    this.activeInputOwnership = {};
   }
 
   private unlockInputs(): void {
@@ -995,8 +932,6 @@ export class GameScene extends Phaser.Scene {
     this.movePadVector = { dx: 0, dy: 0 };
     this.movePadDirection = null;
     this.refreshMovePadVisuals();
-    this.activeInputOwnership.attack?.stop();
-    this.activeInputOwnership = {};
     if (this.endOverlay) {
       this.endOverlay.setVisible(false);
       this.endOverlay.list.forEach((child) => {
