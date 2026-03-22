@@ -62,6 +62,7 @@ export class GameScene extends Phaser.Scene {
 
   private playerPos: Position = { x: 0, y: 0 };
   private playerFacing: Direction = DIRECTION.UP;
+  private playerFacingAngle = 0;
   private playerHp = INITIAL_PLAYER_HP;
 
   private gameEnded = false;
@@ -88,7 +89,6 @@ export class GameScene extends Phaser.Scene {
   private movePadBase!: Phaser.GameObjects.Arc;
   private movePadKnob!: Phaser.GameObjects.Arc;
   private movePadZone!: Phaser.GameObjects.Zone;
-  private movePadArrowTexts: Phaser.GameObjects.Text[] = [];
   private attackTargetHighlight!: Phaser.GameObjects.Rectangle;
   private currentAttackTarget: AttackTarget | null = null;
   private lastMonsterHitAt = -PLAYER_MONSTER_HIT_COOLDOWN_MS;
@@ -273,7 +273,7 @@ export class GameScene extends Phaser.Scene {
     const availablePadWidth = Math.max(88, panelInnerWidth - reservedRightWidth);
     const padSize = Math.min(Math.min(104, contentH - 8), availablePadWidth);
     const padRadius = Math.floor(padSize / 2);
-    const padCenterX = panelLeft + Math.floor((panelInnerWidth - reservedRightWidth) / 2) + 12;
+    const padCenterX = panelLeft + Math.floor(availablePadWidth / 2) + 12;
     const padCenterY = top + Math.floor(contentH / 2);
 
     this.makeMovePad(padCenterX, padCenterY, padRadius);
@@ -306,15 +306,6 @@ export class GameScene extends Phaser.Scene {
     this.movePadBase = this.add.circle(centerX, centerY, radius, 0x21314f, 0.96).setStrokeStyle(2, 0xc08b55, 0.95);
 
     this.add.circle(centerX, centerY, Math.max(18, Math.floor(radius * 0.34)), 0x18243d, 0.95).setStrokeStyle(1, 0x48638f, 0.85);
-
-    const arrowOffset = Math.floor(radius * 0.62);
-    const fontSize = `${Math.max(16, Math.floor(radius * 0.32))}px`;
-    this.movePadArrowTexts = [
-      this.add.text(centerX, centerY - arrowOffset, '↑', { color: '#f1f7ff', fontSize, fontStyle: 'bold' }).setOrigin(0.5),
-      this.add.text(centerX + arrowOffset, centerY, '→', { color: '#f1f7ff', fontSize, fontStyle: 'bold' }).setOrigin(0.5),
-      this.add.text(centerX, centerY + arrowOffset, '↓', { color: '#f1f7ff', fontSize, fontStyle: 'bold' }).setOrigin(0.5),
-      this.add.text(centerX - arrowOffset, centerY, '←', { color: '#f1f7ff', fontSize, fontStyle: 'bold' }).setOrigin(0.5)
-    ];
 
     this.movePadKnob = this.add
       .circle(centerX, centerY, Math.max(20, Math.floor(radius * 0.36)), 0x4a628c, 0.98)
@@ -559,7 +550,7 @@ export class GameScene extends Phaser.Scene {
       dy: offset.y / length
     };
     this.movePadDirection = direction;
-    this.playerFacing = direction;
+    this.setFacingFromInput(rawDx, rawDy, direction);
     this.refreshMovePadVisuals(rawDx, rawDy);
     this.redrawPlayer();
     this.refreshUi();
@@ -592,7 +583,6 @@ export class GameScene extends Phaser.Scene {
     this.movePadBase.setFillStyle(active ? 0x2d4168 : 0x21314f, 0.96);
     this.movePadKnob.setPosition(centerX + rawDx * scale, centerY + rawDy * scale);
     this.movePadKnob.setFillStyle(active ? 0x6e8fbf : 0x4a628c, 0.98);
-    this.movePadArrowTexts.forEach((text) => text.setAlpha(active ? 0.92 : 0.75));
   }
 
   private directionFromVector(dx: number, dy: number): MoveDirection {
@@ -623,26 +613,6 @@ export class GameScene extends Phaser.Scene {
     return DIRECTION.UP_RIGHT;
   }
 
-  private rotationFromDirection(direction: Direction): number {
-    switch (direction) {
-      case DIRECTION.UP:
-        return 0;
-      case DIRECTION.UP_RIGHT:
-        return Math.PI / 4;
-      case DIRECTION.RIGHT:
-        return Math.PI / 2;
-      case DIRECTION.DOWN_RIGHT:
-        return (Math.PI * 3) / 4;
-      case DIRECTION.DOWN:
-        return Math.PI;
-      case DIRECTION.DOWN_LEFT:
-        return -(Math.PI * 3) / 4;
-      case DIRECTION.LEFT:
-        return -Math.PI / 2;
-      case DIRECTION.UP_LEFT:
-        return -Math.PI / 4;
-    }
-  }
 
   private formatDirection(direction: Direction): string {
     switch (direction) {
@@ -675,6 +645,7 @@ export class GameScene extends Phaser.Scene {
     this.grid = generatedBoard.grid;
     this.playerPos = { x: generatedBoard.start.x + 0.5, y: generatedBoard.start.y + 0.5 };
     this.playerFacing = DIRECTION.UP;
+    this.playerFacingAngle = 0;
     this.currentAttackTarget = null;
     this.lastMonsterHitAt = -PLAYER_MONSTER_HIT_COOLDOWN_MS;
     this.monsters.forEach((monster) => monster.marker.destroy());
@@ -795,9 +766,10 @@ export class GameScene extends Phaser.Scene {
   }
 
   private findAttackTarget(): AttackTarget | null {
-    const facingOffset = DIRECTION_OFFSET[this.playerFacing];
-    const boxCenterX = this.playerPos.x + facingOffset.x * ATTACK_BOX_FORWARD_OFFSET_CELLS;
-    const boxCenterY = this.playerPos.y + facingOffset.y * ATTACK_BOX_FORWARD_OFFSET_CELLS;
+    const facingVector = this.getFacingUnitVector();
+    const sideVector = { x: -facingVector.y, y: facingVector.x };
+    const boxCenterX = this.playerPos.x + facingVector.x * ATTACK_BOX_FORWARD_OFFSET_CELLS;
+    const boxCenterY = this.playerPos.y + facingVector.y * ATTACK_BOX_FORWARD_OFFSET_CELLS;
     const halfSize = ATTACK_BOX_SIZE_CELLS / 2;
     const candidates: AttackTarget[] = [];
 
@@ -813,32 +785,36 @@ export class GameScene extends Phaser.Scene {
           continue;
         }
 
-        const tileMinX = x;
-        const tileMaxX = x + 1;
-        const tileMinY = y;
-        const tileMaxY = y + 1;
+        const tileCenterX = x + 0.5;
+        const tileCenterY = y + 0.5;
+        const relativeX = tileCenterX - this.playerPos.x;
+        const relativeY = tileCenterY - this.playerPos.y;
+        const forwardDistance = relativeX * facingVector.x + relativeY * facingVector.y;
+        const lateralDistance = Math.abs(relativeX * sideVector.x + relativeY * sideVector.y);
 
         const intersects =
-          tileMaxX >= boxCenterX - halfSize &&
-          tileMinX <= boxCenterX + halfSize &&
-          tileMaxY >= boxCenterY - halfSize &&
-          tileMinY <= boxCenterY + halfSize;
+          forwardDistance >= ATTACK_BOX_FORWARD_OFFSET_CELLS - 0.75 &&
+          forwardDistance <= ATTACK_BOX_FORWARD_OFFSET_CELLS + ATTACK_BOX_DEPTH_CELLS &&
+          lateralDistance <= halfSize + 0.5;
 
         if (!intersects) {
           continue;
         }
 
-        const distance = Phaser.Math.Distance.Between(this.playerPos.x, this.playerPos.y, x + 0.5, y + 0.5);
+        const distance = Phaser.Math.Distance.Between(this.playerPos.x, this.playerPos.y, tileCenterX, tileCenterY);
         candidates.push({ kind: 'tile', position: { x, y }, distance });
       }
     }
 
     for (const monster of this.monsters) {
+      const relativeX = monster.pos.x - this.playerPos.x;
+      const relativeY = monster.pos.y - this.playerPos.y;
+      const forwardDistance = relativeX * facingVector.x + relativeY * facingVector.y;
+      const lateralDistance = Math.abs(relativeX * sideVector.x + relativeY * sideVector.y);
       const intersects =
-        monster.pos.x >= boxCenterX - halfSize &&
-        monster.pos.x <= boxCenterX + halfSize &&
-        monster.pos.y >= boxCenterY - halfSize &&
-        monster.pos.y <= boxCenterY + halfSize;
+        forwardDistance >= 0 &&
+        forwardDistance <= ATTACK_BOX_FORWARD_OFFSET_CELLS + ATTACK_BOX_DEPTH_CELLS &&
+        lateralDistance <= halfSize + MONSTER_COLLISION_RADIUS_CELLS;
 
       if (!intersects) {
         continue;
@@ -1026,36 +1002,12 @@ export class GameScene extends Phaser.Scene {
 
   private createPlayerMarker(): Phaser.GameObjects.Container {
     const bodyRadius = Math.max(7, Math.floor(this.cellSize * 0.23));
-    const pointerHeight = Math.max(8, Math.floor(this.cellSize * 0.22));
     const outlineBody = this.add.circle(0, 0, bodyRadius + 2, PLAYER_MARKER_STYLE.outlineColor, 1);
     const body = this.add.circle(0, 0, bodyRadius, PLAYER_MARKER_STYLE.bodyColor, 1);
-    const visor = this.add.ellipse(0, -1, bodyRadius * 1.2, Math.max(6, bodyRadius * 0.8), PLAYER_MARKER_STYLE.visorColor, 1);
-    const pointer = this.add.triangle(
-      0,
-      -(bodyRadius + pointerHeight * 0.45),
-      0,
-      -pointerHeight,
-      pointerHeight * 0.65,
-      0,
-      -pointerHeight * 0.65,
-      0,
-      PLAYER_MARKER_STYLE.pointerColor,
-      1
-    );
-    const pointerOutline = this.add.triangle(
-      0,
-      -(bodyRadius + pointerHeight * 0.45),
-      0,
-      -pointerHeight - 2,
-      pointerHeight * 0.85,
-      1,
-      -pointerHeight * 0.85,
-      1,
-      PLAYER_MARKER_STYLE.outlineColor,
-      1
-    );
+    const visor = this.add.ellipse(0, -bodyRadius * 0.55, bodyRadius * 1.2, Math.max(6, bodyRadius * 0.82), PLAYER_MARKER_STYLE.visorColor, 1);
+    const backpack = this.add.circle(0, bodyRadius * 0.48, Math.max(3, bodyRadius * 0.34), PLAYER_MARKER_STYLE.pointerColor, 1);
 
-    return this.add.container(0, 0, [pointerOutline, pointer, outlineBody, body, visor]);
+    return this.add.container(0, 0, [outlineBody, body, visor, backpack]);
   }
 
   private createMonsterMarker(): Phaser.GameObjects.Container {
@@ -1074,7 +1026,7 @@ export class GameScene extends Phaser.Scene {
     const px = this.boardX + this.playerPos.x * this.cellSize;
     const py = this.gridY + this.playerPos.y * this.cellSize;
     this.playerMarker.setPosition(px, py);
-    this.playerMarker.setRotation(this.rotationFromDirection(this.playerFacing));
+    this.playerMarker.setRotation(Phaser.Math.DegToRad(this.playerFacingAngle));
     this.refreshAttackTargetHighlight();
   }
 
@@ -1213,22 +1165,25 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    const horizontal = dx > 0.2 ? 'RIGHT' : dx < -0.2 ? 'LEFT' : null;
-    const vertical = dy > 0.2 ? 'DOWN' : dy < -0.2 ? 'UP' : null;
+    this.setFacingFromInput(dx, dy, this.directionFromVector(dx, dy));
+  }
 
-    if (horizontal && vertical) {
-      this.playerFacing = DIRECTION[`${vertical}_${horizontal}` as keyof typeof DIRECTION];
+  private setFacingFromInput(dx: number, dy: number, fallbackDirection: Direction): void {
+    if (dx === 0 && dy === 0) {
       return;
     }
 
-    if (horizontal) {
-      this.playerFacing = DIRECTION[horizontal];
-      return;
-    }
+    this.playerFacing = fallbackDirection;
+    const angle = Phaser.Math.RadToDeg(Math.atan2(dy, dx)) + 90;
+    this.playerFacingAngle = Math.round(angle / 5) * 5;
+  }
 
-    if (vertical) {
-      this.playerFacing = DIRECTION[vertical];
-    }
+  private getFacingUnitVector(): Position {
+    const radians = Phaser.Math.DegToRad(this.playerFacingAngle - 90);
+    return {
+      x: Math.cos(radians),
+      y: Math.sin(radians)
+    };
   }
 
   private collidesAt(x: number, y: number, radius: number): boolean {
