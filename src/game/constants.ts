@@ -1,4 +1,4 @@
-export const INPUT_REPEAT_INTERVAL_MS = 250;
+export const INPUT_REPEAT_INTERVAL_MS = 700;
 export const INPUT_HIT_PADDING_PX = 14;
 export const INITIAL_PLAYER_HP = 3;
 export const MONSTER_HP = 2;

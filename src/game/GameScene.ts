@@ -38,6 +38,7 @@ interface Monster {
   pos: Position;
   hp: number;
   marker: Phaser.GameObjects.Container;
+  scale: number;
 }
 
 type AttackTarget =
@@ -69,6 +70,7 @@ export class GameScene extends Phaser.Scene {
   private gameWon = false;
 
   private hpText!: Phaser.GameObjects.Text;
+  private stageText!: Phaser.GameObjects.Text;
   private statusText!: Phaser.GameObjects.Text;
   private helpModal!: Phaser.GameObjects.Container;
   private restartCtaText!: Phaser.GameObjects.Text;
@@ -77,6 +79,7 @@ export class GameScene extends Phaser.Scene {
   private endOverlayPanel!: Phaser.GameObjects.Rectangle;
   private endOverlayMessage!: Phaser.GameObjects.Text;
   private endOverlaySubText!: Phaser.GameObjects.Text;
+  private nextStageButton!: Phaser.GameObjects.Container;
   private moveInputEnabled = true;
   private attackInputEnabled = true;
   private activeInputOwnership: Partial<Record<'attack', { pointerId: number; stop: () => void }>> = {};
@@ -92,6 +95,7 @@ export class GameScene extends Phaser.Scene {
   private attackTargetHighlight!: Phaser.GameObjects.Rectangle;
   private currentAttackTarget: AttackTarget | null = null;
   private lastMonsterHitAt = -PLAYER_MONSTER_HIT_COOLDOWN_MS;
+  private stageNumber = 1;
 
   private boardX = 0;
   private boardY = 0;
@@ -237,6 +241,12 @@ export class GameScene extends Phaser.Scene {
       fontStyle: 'bold'
     });
 
+    this.stageText = this.add.text(left + 64, this.safeTop + 18, '', {
+      color: '#cddcff',
+      fontSize: '14px',
+      fontStyle: 'bold'
+    });
+
     const helpBtn = this.makeButton(right - 72, this.safeTop + 12, 32, 32, '?', () => {
       this.helpModal.setVisible(true);
     });
@@ -352,7 +362,7 @@ export class GameScene extends Phaser.Scene {
       .setDepth(17)
       .setVisible(false);
     this.endOverlaySubText = this.add
-      .text(centerX, centerY + 18, GAME_OVERLAY_STYLE.subText, {
+      .text(centerX, centerY + 14, GAME_OVERLAY_STYLE.subText, {
         color: GAME_OVERLAY_STYLE.subTextColor,
         fontSize: '12px',
         align: 'center'
@@ -360,8 +370,17 @@ export class GameScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setDepth(17)
       .setVisible(false);
+    this.nextStageButton = this.makeButton(centerX - 42, centerY + 30, 84, 30, '次へ', () => {
+      if (!this.gameEnded || !this.gameWon) {
+        return;
+      }
+      this.stageNumber += 1;
+      this.newRun();
+    })
+      .setDepth(17)
+      .setVisible(false);
 
-    this.endOverlay = this.add.container(0, 0, [this.endOverlayScrim, this.endOverlayPanel, this.endOverlayMessage, this.endOverlaySubText]).setDepth(15).setVisible(false);
+    this.endOverlay = this.add.container(0, 0, [this.endOverlayScrim, this.endOverlayPanel, this.endOverlayMessage, this.endOverlaySubText, this.nextStageButton]).setDepth(15).setVisible(false);
   }
 
   private createHelpModal(): Phaser.GameObjects.Container {
@@ -542,12 +561,12 @@ export class GameScene extends Phaser.Scene {
     }
 
     const direction = this.directionFromVector(rawDx, rawDy);
-    const offset = DIRECTION_OFFSET[direction];
-    const length = Math.hypot(offset.x, offset.y);
+    const angleDeg = Math.round((Phaser.Math.RadToDeg(Math.atan2(rawDy, rawDx)) + 90) / 5) * 5;
+    const radians = Phaser.Math.DegToRad(angleDeg - 90);
 
     this.movePadVector = {
-      dx: offset.x / length,
-      dy: offset.y / length
+      dx: Math.cos(radians),
+      dy: Math.sin(radians)
     };
     this.movePadDirection = direction;
     this.setFacingFromInput(rawDx, rawDy, direction);
@@ -724,7 +743,41 @@ export class GameScene extends Phaser.Scene {
     const target = this.findAttackTarget();
     if (!target) return;
 
+    const projectile = this.add.circle(
+      this.boardX + this.playerPos.x * this.cellSize,
+      this.gridY + this.playerPos.y * this.cellSize,
+      Math.max(3, Math.floor(this.cellSize * 0.1)),
+      0xffdc8d,
+      1
+    ).setDepth(12).setStrokeStyle(1, 0xfff6d6, 1);
+
+    const targetX = this.boardX + (target.kind === 'monster' ? target.monster.pos.x : target.position.x + 0.5) * this.cellSize;
+    const targetY = this.gridY + (target.kind === 'monster' ? target.monster.pos.y : target.position.y + 0.5) * this.cellSize;
+
+    this.tweens.add({
+      targets: projectile,
+      x: targetX,
+      y: targetY,
+      duration: 90,
+      ease: 'Linear',
+      onComplete: () => {
+        projectile.destroy();
+        this.resolveAttackHit(target);
+      }
+    });
+  }
+
+  private resolveAttackHit(target: AttackTarget): void {
+    if (this.gameEnded) {
+      return;
+    }
+
     if (target.kind === 'monster') {
+      if (!this.monsters.includes(target.monster)) {
+        this.refreshAttackTargetHighlight();
+        this.refreshUi();
+        return;
+      }
       target.monster.hp -= 1;
       if (target.monster.hp <= 0) {
         target.monster.marker.destroy();
@@ -912,11 +965,13 @@ export class GameScene extends Phaser.Scene {
     this.gameWon = didWin;
     this.lockInputs();
     this.endOverlayMessage.setText(didWin ? 'CLEAR!' : 'GAME OVER');
+    this.endOverlaySubText.setText(didWin ? '次のステージへ進もう' : GAME_OVERLAY_STYLE.subText);
     this.endOverlay.setVisible(true);
     this.endOverlayScrim.setVisible(true);
     this.endOverlayPanel.setVisible(true);
     this.endOverlayMessage.setVisible(true);
     this.endOverlaySubText.setVisible(true);
+    this.nextStageButton.setVisible(didWin);
     this.attackTargetHighlight?.setVisible(false);
     this.currentAttackTarget = null;
     this.refreshUi();
@@ -945,7 +1000,7 @@ export class GameScene extends Phaser.Scene {
     if (this.endOverlay) {
       this.endOverlay.setVisible(false);
       this.endOverlay.list.forEach((child) => {
-        const visibleChild = child as Phaser.GameObjects.Rectangle | Phaser.GameObjects.Text;
+        const visibleChild = child as Phaser.GameObjects.Rectangle | Phaser.GameObjects.Text | Phaser.GameObjects.Container;
         visibleChild.setVisible(false);
       });
     }
@@ -1036,7 +1091,7 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    const moveDistance = MONSTER_SPEED_CELLS_PER_SECOND * (delta / 1000);
+    const moveDistance = this.getMonsterSpeed() * (delta / 1000);
     for (const monster of this.monsters) {
       const toPlayerX = this.playerPos.x - monster.pos.x;
       const toPlayerY = this.playerPos.y - monster.pos.y;
@@ -1050,7 +1105,7 @@ export class GameScene extends Phaser.Scene {
         monster.pos,
         toPlayerX * scale,
         toPlayerY * scale,
-        MONSTER_COLLISION_RADIUS_CELLS
+        this.getMonsterCollisionRadius(monster)
       );
       this.redrawMonster(monster);
     }
@@ -1061,9 +1116,11 @@ export class GameScene extends Phaser.Scene {
 
     const monster: Monster = {
       pos: { x: position.x + 0.5, y: position.y + 0.5 },
-      hp: MONSTER_HP,
-      marker
+      hp: this.getMonsterBaseHp(),
+      marker,
+      scale: this.getMonsterScale()
     };
+    marker.setScale(monster.scale);
     this.monsters.push(monster);
     this.redrawMonster(monster);
     this.checkMonsterContact();
@@ -1114,7 +1171,7 @@ export class GameScene extends Phaser.Scene {
 
     const touchedMonster = this.monsters.find(
       (monster) =>
-        Phaser.Math.Distance.Between(this.playerPos.x, this.playerPos.y, monster.pos.x, monster.pos.y) <= PLAYER_MONSTER_CONTACT_RADIUS_CELLS
+        Phaser.Math.Distance.Between(this.playerPos.x, this.playerPos.y, monster.pos.x, monster.pos.y) <= this.getMonsterContactRadius(monster)
     );
 
     if (touchedMonster) {
@@ -1141,6 +1198,7 @@ export class GameScene extends Phaser.Scene {
 
   private refreshUi(): void {
     this.hpText.setText(`HP: ${this.playerHp}`);
+    this.stageText.setText(`STAGE ${this.stageNumber}`);
 
     if (this.gameEnded) {
       this.statusText.setText(this.gameWon ? 'CLEAR' : 'GAME OVER');
@@ -1184,6 +1242,26 @@ export class GameScene extends Phaser.Scene {
       x: Math.cos(radians),
       y: Math.sin(radians)
     };
+  }
+
+  private getMonsterSpeed(): number {
+    return MONSTER_SPEED_CELLS_PER_SECOND * Math.pow(1.03, this.stageNumber - 1);
+  }
+
+  private getMonsterBaseHp(): number {
+    return MONSTER_HP + Math.floor((this.stageNumber - 1) / 5);
+  }
+
+  private getMonsterScale(): number {
+    return 1 + Math.floor((this.stageNumber - 1) / 10) * 0.1;
+  }
+
+  private getMonsterCollisionRadius(monster: Monster): number {
+    return MONSTER_COLLISION_RADIUS_CELLS * monster.scale;
+  }
+
+  private getMonsterContactRadius(monster: Monster): number {
+    return PLAYER_MONSTER_CONTACT_RADIUS_CELLS + (monster.scale - 1) * 0.08;
   }
 
   private collidesAt(x: number, y: number, radius: number): boolean {
