@@ -10,13 +10,17 @@ import {
   INITIAL_PLAYER_HP,
   INPUT_HIT_PADDING_PX,
   INPUT_REPEAT_INTERVAL_MS,
+  MONSTER_HP,
+  MONSTER_MARKER_STYLE,
   MONSTER_COLLISION_RADIUS_CELLS,
   MONSTER_SPEED_CELLS_PER_SECOND,
   MOVE_PAD_DEAD_ZONE_RATIO,
   MOVE_SPEED_CELLS_PER_SECOND,
+  PLAYER_HIT_KNOCKBACK_CELLS,
   PLAYER_COLLISION_RADIUS_CELLS,
   PLAYER_MARKER_STYLE,
-  PLAYER_MONSTER_CONTACT_RADIUS_CELLS
+  PLAYER_MONSTER_CONTACT_RADIUS_CELLS,
+  PLAYER_MONSTER_HIT_COOLDOWN_MS
 } from './constants';
 import { DIRECTION, DIRECTION_OFFSET, type Direction, type Position } from './direction';
 import { generateBoard } from './boardGenerator';
@@ -32,8 +36,13 @@ type MoveDirection = Direction;
 
 interface Monster {
   pos: Position;
-  marker: Phaser.GameObjects.Text;
+  hp: number;
+  marker: Phaser.GameObjects.Container;
 }
+
+type AttackTarget =
+  | { kind: 'tile'; position: Position; distance: number }
+  | { kind: 'monster'; monster: Monster; position: Position; distance: number };
 
 const NUMBER_COLORS: Record<number, string> = {
   1: '#4ea7ff',
@@ -44,17 +53,6 @@ const NUMBER_COLORS: Record<number, string> = {
   6: '#1fabb0',
   7: '#202944',
   8: '#4f4f4f'
-};
-
-const FACING_GLYPH: Record<Direction, string> = {
-  [DIRECTION.UP]: '↑',
-  [DIRECTION.UP_RIGHT]: '↗',
-  [DIRECTION.RIGHT]: '→',
-  [DIRECTION.DOWN_RIGHT]: '↘',
-  [DIRECTION.DOWN]: '↓',
-  [DIRECTION.DOWN_LEFT]: '↙',
-  [DIRECTION.LEFT]: '←',
-  [DIRECTION.UP_LEFT]: '↖'
 };
 
 export class GameScene extends Phaser.Scene {
@@ -85,14 +83,15 @@ export class GameScene extends Phaser.Scene {
   private movePadVector = { dx: 0, dy: 0 };
   private movePadDirection: MoveDirection | null = null;
 
-  private playerMarker!: Phaser.GameObjects.Text;
+  private playerMarker!: Phaser.GameObjects.Container;
   private monsters: Monster[] = [];
   private movePadBase!: Phaser.GameObjects.Arc;
   private movePadKnob!: Phaser.GameObjects.Arc;
   private movePadZone!: Phaser.GameObjects.Zone;
   private movePadArrowTexts: Phaser.GameObjects.Text[] = [];
   private attackTargetHighlight!: Phaser.GameObjects.Rectangle;
-  private currentAttackTarget: Position | null = null;
+  private currentAttackTarget: AttackTarget | null = null;
+  private lastMonsterHitAt = -PLAYER_MONSTER_HIT_COOLDOWN_MS;
 
   private boardX = 0;
   private boardY = 0;
@@ -226,15 +225,6 @@ export class GameScene extends Phaser.Scene {
       .line(boardCenterX, this.bottomY + 1, 0, 0, 0, 1, BOARD_DIVIDER_STYLE.color, BOARD_DIVIDER_STYLE.alpha)
       .setLineWidth(BOARD_DIVIDER_STYLE.width)
       .setOrigin(0.5, 0);
-
-    this.add
-      .text(boardCenterX, this.bottomY + 8, '操作エリア', {
-        color: BOARD_DIVIDER_STYLE.labelColor,
-        fontSize: `${BOARD_DIVIDER_STYLE.labelFontSize}px`,
-        fontStyle: 'bold'
-      })
-      .setOrigin(0.5, 0)
-      .setDepth(2);
   }
 
   private addTopUi(): void {
@@ -274,12 +264,12 @@ export class GameScene extends Phaser.Scene {
     const contentH = Math.max(110, this.bottomPanelH - 20);
     const panelInnerWidth = this.panelWidth - 24;
 
-    const attackW = Math.max(72, Math.min(96, Math.floor(panelInnerWidth * 0.24)));
-    const attackH = Math.max(60, Math.min(68, contentH - 14));
-    const attackX = panelLeft + this.panelWidth - attackW - 12;
-    const attackY = top + Math.floor((contentH - attackH) / 2);
+    const attackSize = Math.max(72, Math.min(92, contentH - 10));
+    const attackRadius = Math.floor(attackSize / 2);
+    const attackCenterX = panelLeft + this.panelWidth - attackRadius - 16;
+    const attackCenterY = top + Math.floor(contentH / 2);
 
-    const reservedRightWidth = attackW + 24;
+    const reservedRightWidth = attackSize + 28;
     const availablePadWidth = Math.max(88, panelInnerWidth - reservedRightWidth);
     const padSize = Math.min(Math.min(104, contentH - 8), availablePadWidth);
     const padRadius = Math.floor(padSize / 2);
@@ -288,11 +278,10 @@ export class GameScene extends Phaser.Scene {
 
     this.makeMovePad(padCenterX, padCenterY, padRadius);
 
-    this.makeRepeatingButton(
-      attackX,
-      attackY,
-      attackW,
-      attackH,
+    this.makeRepeatingCircleButton(
+      attackCenterX,
+      attackCenterY,
+      attackRadius,
       '叩く',
       () => this.tryAttackForward(),
       0x644022,
@@ -441,11 +430,10 @@ export class GameScene extends Phaser.Scene {
     return c;
   }
 
-  private makeRepeatingButton(
-    x: number,
-    y: number,
-    w: number,
-    h: number,
+  private makeRepeatingCircleButton(
+    centerX: number,
+    centerY: number,
+    radius: number,
     label: string,
     onTrigger: () => void,
     idleColor: number,
@@ -455,14 +443,11 @@ export class GameScene extends Phaser.Scene {
     repeatIntervalMs: number,
     inputChannel: 'attack'
   ): Phaser.GameObjects.Container {
-    const box = this.add
-      .rectangle(0, 0, w, h, idleColor)
-      .setOrigin(0)
-      .setStrokeStyle(1, 0xc08b55, 0.95);
+    const box = this.add.circle(0, 0, radius, idleColor).setStrokeStyle(2, 0xc08b55, 0.95);
     const text = this.add
-      .text(w / 2, h / 2, label, { color: textColor, fontSize: `${fontSize}px`, fontStyle: 'bold' })
+      .text(0, 0, label, { color: textColor, fontSize: `${fontSize}px`, fontStyle: 'bold' })
       .setOrigin(0.5);
-    const c = this.add.container(x, y, [box, text]);
+    const c = this.add.container(centerX, centerY, [box, text]);
 
     let repeatingEvent: Phaser.Time.TimerEvent | null = null;
     let activePointerId: number | null = null;
@@ -484,7 +469,7 @@ export class GameScene extends Phaser.Scene {
       activePointerId = null;
       clearOwnership();
       box.setFillStyle(idleColor);
-      text.setY(h / 2);
+      text.setY(0);
     };
 
     const startRepeat = (pointer: Phaser.Input.Pointer) => {
@@ -505,7 +490,7 @@ export class GameScene extends Phaser.Scene {
         stop: stopRepeat
       };
       box.setFillStyle(activeColor);
-      text.setY(h / 2 + 1);
+      text.setY(1);
       onTrigger();
       repeatingEvent = this.time.addEvent({
         delay: repeatIntervalMs,
@@ -522,8 +507,8 @@ export class GameScene extends Phaser.Scene {
 
     box
       .setInteractive(
-        new Phaser.Geom.Rectangle(-INPUT_HIT_PADDING_PX, -INPUT_HIT_PADDING_PX, w + INPUT_HIT_PADDING_PX * 2, h + INPUT_HIT_PADDING_PX * 2),
-        Phaser.Geom.Rectangle.Contains
+        new Phaser.Geom.Circle(0, 0, radius + INPUT_HIT_PADDING_PX),
+        Phaser.Geom.Circle.Contains
       )
       .on('pointerdown', (pointer: Phaser.Input.Pointer) => {
         startRepeat(pointer);
@@ -638,6 +623,48 @@ export class GameScene extends Phaser.Scene {
     return DIRECTION.UP_RIGHT;
   }
 
+  private rotationFromDirection(direction: Direction): number {
+    switch (direction) {
+      case DIRECTION.UP:
+        return 0;
+      case DIRECTION.UP_RIGHT:
+        return Math.PI / 4;
+      case DIRECTION.RIGHT:
+        return Math.PI / 2;
+      case DIRECTION.DOWN_RIGHT:
+        return (Math.PI * 3) / 4;
+      case DIRECTION.DOWN:
+        return Math.PI;
+      case DIRECTION.DOWN_LEFT:
+        return -(Math.PI * 3) / 4;
+      case DIRECTION.LEFT:
+        return -Math.PI / 2;
+      case DIRECTION.UP_LEFT:
+        return -Math.PI / 4;
+    }
+  }
+
+  private formatDirection(direction: Direction): string {
+    switch (direction) {
+      case DIRECTION.UP:
+        return '↑';
+      case DIRECTION.UP_RIGHT:
+        return '↗';
+      case DIRECTION.RIGHT:
+        return '→';
+      case DIRECTION.DOWN_RIGHT:
+        return '↘';
+      case DIRECTION.DOWN:
+        return '↓';
+      case DIRECTION.DOWN_LEFT:
+        return '↙';
+      case DIRECTION.LEFT:
+        return '←';
+      case DIRECTION.UP_LEFT:
+        return '↖';
+    }
+  }
+
   private newRun(): void {
     this.unlockInputs();
     this.gameEnded = false;
@@ -649,6 +676,7 @@ export class GameScene extends Phaser.Scene {
     this.playerPos = { x: generatedBoard.start.x + 0.5, y: generatedBoard.start.y + 0.5 };
     this.playerFacing = DIRECTION.UP;
     this.currentAttackTarget = null;
+    this.lastMonsterHitAt = -PLAYER_MONSTER_HIT_COOLDOWN_MS;
     this.monsters.forEach((monster) => monster.marker.destroy());
     this.monsters = [];
 
@@ -690,19 +718,7 @@ export class GameScene extends Phaser.Scene {
       .setVisible(false);
 
     this.playerMarker?.destroy();
-    this.playerMarker = this.add
-      .text(0, 0, '', {
-        color: PLAYER_MARKER_STYLE.color,
-        fontSize: `${this.cellSize >= 26 ? PLAYER_MARKER_STYLE.largeFontSize : PLAYER_MARKER_STYLE.smallFontSize}px`,
-        fontStyle: 'bold'
-      })
-      .setStroke(
-        PLAYER_MARKER_STYLE.strokeColor,
-        this.cellSize >= 26 ? PLAYER_MARKER_STYLE.largeStroke : PLAYER_MARKER_STYLE.smallStroke
-      )
-      .setShadow(0, PLAYER_MARKER_STYLE.shadowOffsetY, PLAYER_MARKER_STYLE.shadowColor, PLAYER_MARKER_STYLE.shadowBlur, true, true)
-      .setOrigin(0.5)
-      .setDepth(10);
+    this.playerMarker = this.createPlayerMarker().setDepth(10);
 
     this.redrawAll();
     this.refreshMovePadVisuals();
@@ -737,7 +753,18 @@ export class GameScene extends Phaser.Scene {
     const target = this.findAttackTarget();
     if (!target) return;
 
-    const targetTile = this.grid[target.y][target.x];
+    if (target.kind === 'monster') {
+      target.monster.hp -= 1;
+      if (target.monster.hp <= 0) {
+        target.monster.marker.destroy();
+        this.monsters = this.monsters.filter((monster) => monster !== target.monster);
+      }
+      this.refreshAttackTargetHighlight();
+      this.refreshUi();
+      return;
+    }
+
+    const targetTile = this.grid[target.position.y][target.position.x];
     if (targetTile.isOpen) return;
 
     targetTile.isOpen = true;
@@ -745,7 +772,7 @@ export class GameScene extends Phaser.Scene {
     if (targetTile.goalState === GOAL_STATE.HIDDEN) {
       targetTile.goalState = GOAL_STATE.REVEALED;
       targetTile.tileKind = TILE_KIND.GOAL;
-      this.redrawCell(target.x, target.y);
+      this.redrawCell(target.position.x, target.position.y);
       this.refreshUi();
       this.refreshAttackTargetHighlight();
       return;
@@ -753,26 +780,26 @@ export class GameScene extends Phaser.Scene {
 
     if (targetTile.hasMine) {
       targetTile.tileKind = TILE_KIND.SCORCHED;
-      this.spawnMonster(target);
-      this.redrawCell(target.x, target.y);
+      this.spawnMonster(target.position);
+      this.redrawCell(target.position.x, target.position.y);
       this.refreshUi();
       this.refreshAttackTargetHighlight();
       return;
     }
 
     targetTile.tileKind = TILE_KIND.FLOOR;
-    const openedPositions = this.expandOpenAreaFrom(target);
+    const openedPositions = this.expandOpenAreaFrom(target.position);
     this.redrawCells(openedPositions);
     this.refreshUi();
     this.refreshAttackTargetHighlight();
   }
 
-  private findAttackTarget(): Position | null {
+  private findAttackTarget(): AttackTarget | null {
     const facingOffset = DIRECTION_OFFSET[this.playerFacing];
     const boxCenterX = this.playerPos.x + facingOffset.x * ATTACK_BOX_FORWARD_OFFSET_CELLS;
     const boxCenterY = this.playerPos.y + facingOffset.y * ATTACK_BOX_FORWARD_OFFSET_CELLS;
     const halfSize = ATTACK_BOX_SIZE_CELLS / 2;
-    const candidates: Array<{ position: Position; distance: number }> = [];
+    const candidates: AttackTarget[] = [];
 
     const minX = Math.max(0, Math.floor(boxCenterX - ATTACK_BOX_DEPTH_CELLS));
     const maxX = Math.min(this.gridWidth - 1, Math.ceil(boxCenterX + ATTACK_BOX_DEPTH_CELLS));
@@ -802,12 +829,31 @@ export class GameScene extends Phaser.Scene {
         }
 
         const distance = Phaser.Math.Distance.Between(this.playerPos.x, this.playerPos.y, x + 0.5, y + 0.5);
-        candidates.push({ position: { x, y }, distance });
+        candidates.push({ kind: 'tile', position: { x, y }, distance });
       }
     }
 
+    for (const monster of this.monsters) {
+      const intersects =
+        monster.pos.x >= boxCenterX - halfSize &&
+        monster.pos.x <= boxCenterX + halfSize &&
+        monster.pos.y >= boxCenterY - halfSize &&
+        monster.pos.y <= boxCenterY + halfSize;
+
+      if (!intersects) {
+        continue;
+      }
+
+      candidates.push({
+        kind: 'monster',
+        monster,
+        position: { x: Math.floor(monster.pos.x), y: Math.floor(monster.pos.y) },
+        distance: Phaser.Math.Distance.Between(this.playerPos.x, this.playerPos.y, monster.pos.x, monster.pos.y)
+      });
+    }
+
     candidates.sort((a, b) => a.distance - b.distance);
-    return candidates[0]?.position ?? null;
+    return candidates[0] ?? null;
   }
 
   private expandOpenAreaFrom(origin: Position): Position[] {
@@ -978,11 +1024,57 @@ export class GameScene extends Phaser.Scene {
     txt.setText(cell.adjacentMineCount > 0 ? String(cell.adjacentMineCount) : '');
   }
 
+  private createPlayerMarker(): Phaser.GameObjects.Container {
+    const bodyRadius = Math.max(7, Math.floor(this.cellSize * 0.23));
+    const pointerHeight = Math.max(8, Math.floor(this.cellSize * 0.22));
+    const outlineBody = this.add.circle(0, 0, bodyRadius + 2, PLAYER_MARKER_STYLE.outlineColor, 1);
+    const body = this.add.circle(0, 0, bodyRadius, PLAYER_MARKER_STYLE.bodyColor, 1);
+    const visor = this.add.ellipse(0, -1, bodyRadius * 1.2, Math.max(6, bodyRadius * 0.8), PLAYER_MARKER_STYLE.visorColor, 1);
+    const pointer = this.add.triangle(
+      0,
+      -(bodyRadius + pointerHeight * 0.45),
+      0,
+      -pointerHeight,
+      pointerHeight * 0.65,
+      0,
+      -pointerHeight * 0.65,
+      0,
+      PLAYER_MARKER_STYLE.pointerColor,
+      1
+    );
+    const pointerOutline = this.add.triangle(
+      0,
+      -(bodyRadius + pointerHeight * 0.45),
+      0,
+      -pointerHeight - 2,
+      pointerHeight * 0.85,
+      1,
+      -pointerHeight * 0.85,
+      1,
+      PLAYER_MARKER_STYLE.outlineColor,
+      1
+    );
+
+    return this.add.container(0, 0, [pointerOutline, pointer, outlineBody, body, visor]);
+  }
+
+  private createMonsterMarker(): Phaser.GameObjects.Container {
+    const size = Math.max(8, Math.floor(this.cellSize * 0.18));
+    const outline = this.add.circle(0, 0, size + 4, MONSTER_MARKER_STYLE.outlineColor, 1);
+    const body = this.add.circle(0, 0, size + 2, MONSTER_MARKER_STYLE.bodyColor, 1);
+    const hornLeft = this.add.triangle(-size * 0.45, -size * 0.95, 0, 0, size * 0.7, size * 0.9, -size * 0.35, size * 0.85, MONSTER_MARKER_STYLE.bodyColor, 1);
+    const hornRight = this.add.triangle(size * 0.45, -size * 0.95, 0, 0, size * 0.35, size * 0.85, -size * 0.7, size * 0.9, MONSTER_MARKER_STYLE.bodyColor, 1);
+    const eyeLeft = this.add.circle(-size * 0.45, -1, Math.max(1.5, size * 0.18), MONSTER_MARKER_STYLE.eyeColor, 1);
+    const eyeRight = this.add.circle(size * 0.45, -1, Math.max(1.5, size * 0.18), MONSTER_MARKER_STYLE.eyeColor, 1);
+
+    return this.add.container(0, 0, [outline, hornLeft, hornRight, body, eyeLeft, eyeRight]);
+  }
+
   private redrawPlayer(): void {
     const px = this.boardX + this.playerPos.x * this.cellSize;
     const py = this.gridY + this.playerPos.y * this.cellSize;
     this.playerMarker.setPosition(px, py);
-    this.playerMarker.setText(FACING_GLYPH[this.playerFacing]);
+    this.playerMarker.setRotation(this.rotationFromDirection(this.playerFacing));
     this.refreshAttackTargetHighlight();
   }
 
@@ -1013,18 +1105,11 @@ export class GameScene extends Phaser.Scene {
   }
 
   private spawnMonster(position: Position): void {
-    const marker = this.add
-      .text(0, 0, 'M', {
-        color: '#ffe3e3',
-        fontSize: `${this.cellSize >= 26 ? 18 : 15}px`,
-        fontStyle: 'bold'
-      })
-      .setStroke('#2a0910', 5)
-      .setOrigin(0.5)
-      .setDepth(11);
+    const marker = this.createMonsterMarker().setDepth(11);
 
     const monster: Monster = {
       pos: { x: position.x + 0.5, y: position.y + 0.5 },
+      hp: MONSTER_HP,
       marker
     };
     this.monsters.push(monster);
@@ -1070,13 +1155,36 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    const touched = this.monsters.some((monster) =>
-      Phaser.Math.Distance.Between(this.playerPos.x, this.playerPos.y, monster.pos.x, monster.pos.y) <= PLAYER_MONSTER_CONTACT_RADIUS_CELLS
+    const now = this.time.now;
+    if (now - this.lastMonsterHitAt < PLAYER_MONSTER_HIT_COOLDOWN_MS) {
+      return;
+    }
+
+    const touchedMonster = this.monsters.find(
+      (monster) =>
+        Phaser.Math.Distance.Between(this.playerPos.x, this.playerPos.y, monster.pos.x, monster.pos.y) <= PLAYER_MONSTER_CONTACT_RADIUS_CELLS
     );
 
-    if (touched) {
-      this.setEndState(false);
+    if (touchedMonster) {
+      this.lastMonsterHitAt = now;
+      this.playerHp = Math.max(0, this.playerHp - 1);
+      this.applyPlayerKnockback(touchedMonster);
+      this.redrawPlayer();
+      if (this.playerHp <= 0) {
+        this.setEndState(false);
+        return;
+      }
+      this.refreshUi();
     }
+  }
+
+  private applyPlayerKnockback(monster: Monster): void {
+    const fromMonsterX = this.playerPos.x - monster.pos.x;
+    const fromMonsterY = this.playerPos.y - monster.pos.y;
+    const distance = Math.hypot(fromMonsterX, fromMonsterY) || 1;
+    const knockbackX = (fromMonsterX / distance) * PLAYER_HIT_KNOCKBACK_CELLS;
+    const knockbackY = (fromMonsterY / distance) * PLAYER_HIT_KNOCKBACK_CELLS;
+    this.playerPos = this.resolveMovementForEntity(this.playerPos, knockbackX, knockbackY, PLAYER_COLLISION_RADIUS_CELLS);
   }
 
   private refreshUi(): void {
@@ -1089,7 +1197,11 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.restartCtaText.setText('');
-    this.statusText.setText(this.currentAttackTarget ? `狙い ${this.currentAttackTarget.x + 1},${this.currentAttackTarget.y + 1}` : `向き ${FACING_GLYPH[this.playerFacing]}`);
+    this.statusText.setText(
+      this.currentAttackTarget
+        ? `狙い ${this.currentAttackTarget.position.x + 1},${this.currentAttackTarget.position.y + 1}${this.currentAttackTarget.kind === 'monster' ? ' 敵' : ''}`
+        : `向き ${this.formatDirection(this.playerFacing)}`
+    );
   }
 
   private getMoveVector(): { dx: number; dy: number } {
@@ -1173,7 +1285,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.attackTargetHighlight
-      .setPosition(this.boardX + target.x * this.cellSize + 1, this.gridY + target.y * this.cellSize + 1)
+      .setPosition(this.boardX + target.position.x * this.cellSize + 1, this.gridY + target.position.y * this.cellSize + 1)
       .setVisible(true);
   }
 
