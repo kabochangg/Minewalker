@@ -78,6 +78,9 @@ for (let y = 0; y < gridSize; y += 1) {
 const playerX = boardX + 7 * cellSize + cellSize / 2;
 const playerY = boardY + 7 * cellSize + cellSize / 2 + 6;
 svg += `<text x="${playerX}" y="${playerY}" fill="#ffffff" stroke="#071020" stroke-width="5" paint-order="stroke" font-family="'Noto Sans JP', system-ui, sans-serif" font-size="20" font-weight="700" text-anchor="middle">→</text>`;
+const monsterX = boardX + 6 * cellSize + cellSize / 2;
+const monsterY = boardY + 8 * cellSize + cellSize / 2 + 5;
+svg += `<text x="${monsterX}" y="${monsterY}" fill="#ffe3e3" stroke="#2a0910" stroke-width="5" paint-order="stroke" font-family="'Noto Sans JP', system-ui, sans-serif" font-size="18" font-weight="700" text-anchor="middle">M</text>`;
 
 const dpadLeft = 23;
 const dpadTop = bottomY + 26;

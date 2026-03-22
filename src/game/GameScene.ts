@@ -10,10 +10,13 @@ import {
   INITIAL_PLAYER_HP,
   INPUT_HIT_PADDING_PX,
   INPUT_REPEAT_INTERVAL_MS,
+  MONSTER_COLLISION_RADIUS_CELLS,
+  MONSTER_SPEED_CELLS_PER_SECOND,
   MOVE_PAD_DEAD_ZONE_RATIO,
   MOVE_SPEED_CELLS_PER_SECOND,
   PLAYER_COLLISION_RADIUS_CELLS,
-  PLAYER_MARKER_STYLE
+  PLAYER_MARKER_STYLE,
+  PLAYER_MONSTER_CONTACT_RADIUS_CELLS
 } from './constants';
 import { DIRECTION, DIRECTION_OFFSET, type Direction, type Position } from './direction';
 import { generateBoard } from './boardGenerator';
@@ -26,6 +29,11 @@ const MOVE_PAD_ACTIVE_TRAVEL_RATIO = 0.42;
 const MOVE_SWEEP_STEP_CELLS = 0.08;
 
 type MoveDirection = Direction;
+
+interface Monster {
+  pos: Position;
+  marker: Phaser.GameObjects.Text;
+}
 
 const NUMBER_COLORS: Record<number, string> = {
   1: '#4ea7ff',
@@ -78,6 +86,7 @@ export class GameScene extends Phaser.Scene {
   private movePadDirection: MoveDirection | null = null;
 
   private playerMarker!: Phaser.GameObjects.Text;
+  private monsters: Monster[] = [];
   private movePadBase!: Phaser.GameObjects.Arc;
   private movePadKnob!: Phaser.GameObjects.Arc;
   private movePadZone!: Phaser.GameObjects.Zone;
@@ -132,12 +141,13 @@ export class GameScene extends Phaser.Scene {
     }
 
     const movement = this.getMoveVector();
-    if (movement.dx === 0 && movement.dy === 0) {
-      return;
+    if (movement.dx !== 0 || movement.dy !== 0) {
+      const step = MOVE_SPEED_CELLS_PER_SECOND * (delta / 1000);
+      this.movePlayer(movement.dx * step, movement.dy * step);
     }
 
-    const step = MOVE_SPEED_CELLS_PER_SECOND * (delta / 1000);
-    this.movePlayer(movement.dx * step, movement.dy * step);
+    this.updateMonsters(delta);
+    this.checkMonsterContact();
   }
 
   private computeLayout(): void {
@@ -630,9 +640,11 @@ export class GameScene extends Phaser.Scene {
 
     const generatedBoard = generateBoard({ width: this.gridWidth, height: this.gridHeight, mineCount: this.mineCount });
     this.grid = generatedBoard.grid;
-    this.playerPos = { ...generatedBoard.start };
+    this.playerPos = { x: generatedBoard.start.x + 0.5, y: generatedBoard.start.y + 0.5 };
     this.playerFacing = DIRECTION.UP;
     this.currentAttackTarget = null;
+    this.monsters.forEach((monster) => monster.marker.destroy());
+    this.monsters = [];
 
     this.cellBg.flat().forEach((r) => r.destroy());
     this.cellText.flat().forEach((t) => t.destroy());
@@ -694,11 +706,12 @@ export class GameScene extends Phaser.Scene {
   private movePlayer(dx: number, dy: number): void {
     this.updateFacingFromVector(dx, dy);
 
-    const movedPosition = this.resolveMovement(dx, dy);
+    const movedPosition = this.resolveMovementForEntity(this.playerPos, dx, dy, PLAYER_COLLISION_RADIUS_CELLS);
 
     if (movedPosition.x !== this.playerPos.x || movedPosition.y !== this.playerPos.y) {
       this.playerPos = movedPosition;
       this.checkGoalReached();
+      this.checkMonsterContact();
       this.redrawPlayer();
       this.refreshUi();
       return;
@@ -708,35 +721,8 @@ export class GameScene extends Phaser.Scene {
     this.refreshUi();
   }
 
-  private resolveMovement(dx: number, dy: number): Position {
-    const totalDistance = Math.hypot(dx, dy);
-    if (totalDistance === 0) {
-      return this.playerPos;
-    }
-
-    const sweepSteps = Math.max(1, Math.ceil(totalDistance / MOVE_SWEEP_STEP_CELLS));
-    const stepX = dx / sweepSteps;
-    const stepY = dy / sweepSteps;
-    let nextX = this.playerPos.x;
-    let nextY = this.playerPos.y;
-
-    for (let i = 0; i < sweepSteps; i += 1) {
-      const candidateX = nextX + stepX;
-      if (!this.collidesAt(candidateX, nextY)) {
-        nextX = this.clampPlayerAxis(candidateX, this.gridWidth);
-      }
-
-      const candidateY = nextY + stepY;
-      if (!this.collidesAt(nextX, candidateY)) {
-        nextY = this.clampPlayerAxis(candidateY, this.gridHeight);
-      }
-    }
-
-    return { x: nextX, y: nextY };
-  }
-
-  private clampPlayerAxis(value: number, maxCells: number): number {
-    return Phaser.Math.Clamp(value, PLAYER_COLLISION_RADIUS_CELLS, maxCells - 1 - PLAYER_COLLISION_RADIUS_CELLS);
+  private clampAxis(value: number, maxCells: number, radius: number): number {
+    return Phaser.Math.Clamp(value, radius, maxCells - radius);
   }
 
   private tryAttackForward(): void {
@@ -760,13 +746,9 @@ export class GameScene extends Phaser.Scene {
     }
 
     if (targetTile.hasMine) {
-      this.playerHp -= 1;
       targetTile.tileKind = TILE_KIND.SCORCHED;
+      this.spawnMonster(target);
       this.redrawCell(target.x, target.y);
-
-      if (this.playerHp <= 0) {
-        this.setEndState(false);
-      }
       this.refreshUi();
       this.refreshAttackTargetHighlight();
       return;
@@ -991,11 +973,104 @@ export class GameScene extends Phaser.Scene {
   }
 
   private redrawPlayer(): void {
-    const px = this.boardX + (this.playerPos.x + 0.5) * this.cellSize;
-    const py = this.gridY + (this.playerPos.y + 0.5) * this.cellSize;
+    const px = this.boardX + this.playerPos.x * this.cellSize;
+    const py = this.gridY + this.playerPos.y * this.cellSize;
     this.playerMarker.setPosition(px, py);
     this.playerMarker.setText(FACING_GLYPH[this.playerFacing]);
     this.refreshAttackTargetHighlight();
+  }
+
+
+  private updateMonsters(delta: number): void {
+    if (this.monsters.length === 0) {
+      return;
+    }
+
+    const moveDistance = MONSTER_SPEED_CELLS_PER_SECOND * (delta / 1000);
+    for (const monster of this.monsters) {
+      const toPlayerX = this.playerPos.x - monster.pos.x;
+      const toPlayerY = this.playerPos.y - monster.pos.y;
+      const distance = Math.hypot(toPlayerX, toPlayerY);
+      if (distance === 0) {
+        continue;
+      }
+
+      const scale = Math.min(moveDistance, distance) / distance;
+      monster.pos = this.resolveMovementForEntity(
+        monster.pos,
+        toPlayerX * scale,
+        toPlayerY * scale,
+        MONSTER_COLLISION_RADIUS_CELLS
+      );
+      this.redrawMonster(monster);
+    }
+  }
+
+  private spawnMonster(position: Position): void {
+    const marker = this.add
+      .text(0, 0, 'M', {
+        color: '#ffe3e3',
+        fontSize: `${this.cellSize >= 26 ? 18 : 15}px`,
+        fontStyle: 'bold'
+      })
+      .setStroke('#2a0910', 5)
+      .setOrigin(0.5)
+      .setDepth(11);
+
+    const monster: Monster = {
+      pos: { x: position.x + 0.5, y: position.y + 0.5 },
+      marker
+    };
+    this.monsters.push(monster);
+    this.redrawMonster(monster);
+    this.checkMonsterContact();
+  }
+
+  private redrawMonster(monster: Monster): void {
+    const px = this.boardX + monster.pos.x * this.cellSize;
+    const py = this.gridY + monster.pos.y * this.cellSize;
+    monster.marker.setPosition(px, py);
+  }
+
+  private resolveMovementForEntity(origin: Position, dx: number, dy: number, radius: number): Position {
+    const totalDistance = Math.hypot(dx, dy);
+    if (totalDistance === 0) {
+      return origin;
+    }
+
+    const sweepSteps = Math.max(1, Math.ceil(totalDistance / MOVE_SWEEP_STEP_CELLS));
+    const stepX = dx / sweepSteps;
+    const stepY = dy / sweepSteps;
+    let nextX = origin.x;
+    let nextY = origin.y;
+
+    for (let i = 0; i < sweepSteps; i += 1) {
+      const candidateX = nextX + stepX;
+      if (!this.collidesAt(candidateX, nextY, radius)) {
+        nextX = this.clampAxis(candidateX, this.gridWidth, radius);
+      }
+
+      const candidateY = nextY + stepY;
+      if (!this.collidesAt(nextX, candidateY, radius)) {
+        nextY = this.clampAxis(candidateY, this.gridHeight, radius);
+      }
+    }
+
+    return { x: nextX, y: nextY };
+  }
+
+  private checkMonsterContact(): void {
+    if (this.gameEnded) {
+      return;
+    }
+
+    const touched = this.monsters.some((monster) =>
+      Phaser.Math.Distance.Between(this.playerPos.x, this.playerPos.y, monster.pos.x, monster.pos.y) <= PLAYER_MONSTER_CONTACT_RADIUS_CELLS
+    );
+
+    if (touched) {
+      this.setEndState(false);
+    }
   }
 
   private refreshUi(): void {
@@ -1038,11 +1113,11 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private collidesAt(x: number, y: number): boolean {
-    const minX = Math.floor(x - PLAYER_COLLISION_RADIUS_CELLS);
-    const maxX = Math.floor(x + PLAYER_COLLISION_RADIUS_CELLS);
-    const minY = Math.floor(y - PLAYER_COLLISION_RADIUS_CELLS);
-    const maxY = Math.floor(y + PLAYER_COLLISION_RADIUS_CELLS);
+  private collidesAt(x: number, y: number, radius: number): boolean {
+    const minX = Math.floor(x - radius);
+    const maxX = Math.floor(x + radius);
+    const minY = Math.floor(y - radius);
+    const maxY = Math.floor(y + radius);
 
     for (let tileY = minY; tileY <= maxY; tileY += 1) {
       for (let tileX = minX; tileX <= maxX; tileX += 1) {
@@ -1056,7 +1131,7 @@ export class GameScene extends Phaser.Scene {
         const closestX = Phaser.Math.Clamp(x, tileX, tileX + 1);
         const closestY = Phaser.Math.Clamp(y, tileY, tileY + 1);
         const distance = Phaser.Math.Distance.Between(x, y, closestX, closestY);
-        if (distance < PLAYER_COLLISION_RADIUS_CELLS) {
+        if (distance < radius) {
           return true;
         }
       }
@@ -1067,8 +1142,8 @@ export class GameScene extends Phaser.Scene {
 
   private getPlayerCell(): Position {
     return {
-      x: Phaser.Math.Clamp(Math.floor(this.playerPos.x + 0.5), 0, this.gridWidth - 1),
-      y: Phaser.Math.Clamp(Math.floor(this.playerPos.y + 0.5), 0, this.gridHeight - 1)
+      x: Phaser.Math.Clamp(Math.floor(this.playerPos.x), 0, this.gridWidth - 1),
+      y: Phaser.Math.Clamp(Math.floor(this.playerPos.y), 0, this.gridHeight - 1)
     };
   }
 
