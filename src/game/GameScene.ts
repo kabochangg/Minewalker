@@ -268,23 +268,29 @@ export class GameScene extends Phaser.Scene {
   }
 
   private addBottomUi(): void {
-    const left = Math.floor((this.scale.gameSize.width - this.panelWidth) / 2) + 12;
+    const panelLeft = Math.floor((this.scale.gameSize.width - this.panelWidth) / 2);
+    const left = panelLeft + 12;
     const top = this.bottomY + 10;
     const contentH = Math.max(110, this.bottomPanelH - 20);
+    const panelInnerWidth = this.panelWidth - 24;
 
-    const padSize = Math.min(104, contentH - 8);
+    const attackW = Math.max(72, Math.min(96, Math.floor(panelInnerWidth * 0.24)));
+    const attackH = Math.max(60, Math.min(68, contentH - 14));
+    const attackX = panelLeft + this.panelWidth - attackW - 12;
+    const attackY = top + Math.floor((contentH - attackH) / 2);
+
+    const reservedRightWidth = attackW + 24;
+    const availablePadWidth = Math.max(88, panelInnerWidth - reservedRightWidth);
+    const padSize = Math.min(Math.min(104, contentH - 8), availablePadWidth);
     const padRadius = Math.floor(padSize / 2);
-    const padCenterX = left + padRadius + 6;
+    const padCenterX = panelLeft + Math.floor((panelInnerWidth - reservedRightWidth) / 2) + 12;
     const padCenterY = top + Math.floor(contentH / 2);
 
     this.makeMovePad(padCenterX, padCenterY, padRadius);
 
-    const attackX = left + padSize + 24;
-    const attackW = Math.min(124, this.panelWidth - (attackX - left) - 12);
-    const attackH = Math.min(72, contentH - 12);
     this.makeRepeatingButton(
       attackX,
-      top + Math.floor((contentH - attackH) / 2),
+      attackY,
       attackW,
       attackH,
       '叩く',
@@ -292,7 +298,7 @@ export class GameScene extends Phaser.Scene {
       0x644022,
       0x815631,
       '#fff4df',
-      20,
+      18,
       INPUT_REPEAT_INTERVAL_MS,
       'attack'
     );
