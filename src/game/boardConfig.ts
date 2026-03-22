@@ -14,12 +14,12 @@ export interface BoardConfig {
 export const BOARD_CONFIG: Record<BoardDifficulty, BoardConfig> = {
   [BOARD_DIFFICULTY.INTERMEDIATE]: {
     width: 16,
-    height: 16,
+    height: 12,
     mineCount: 40
   },
   [BOARD_DIFFICULTY.EXPERT]: {
     width: 30,
-    height: 16,
+    height: 12,
     mineCount: 99
   }
 };
