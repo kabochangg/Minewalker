@@ -13,6 +13,8 @@ export const MOVE_PAD_DEAD_ZONE_RATIO = 0.2;
 export const ATTACK_BOX_FORWARD_OFFSET_CELLS = 0.75;
 export const ATTACK_BOX_SIZE_CELLS = 0.7;
 export const ATTACK_BOX_DEPTH_CELLS = 1.7;
+export const PROJECTILE_TRAVEL_CELLS = 2.45;
+export const PROJECTILE_TRAVEL_DURATION_MS = 130;
 
 export const PLAYER_MARKER_STYLE = {
   bodyColor: 0xf7fbff,

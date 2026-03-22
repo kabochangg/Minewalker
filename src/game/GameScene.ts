@@ -20,7 +20,9 @@ import {
   PLAYER_COLLISION_RADIUS_CELLS,
   PLAYER_MARKER_STYLE,
   PLAYER_MONSTER_CONTACT_RADIUS_CELLS,
-  PLAYER_MONSTER_HIT_COOLDOWN_MS
+  PLAYER_MONSTER_HIT_COOLDOWN_MS,
+  PROJECTILE_TRAVEL_CELLS,
+  PROJECTILE_TRAVEL_DURATION_MS
 } from './constants';
 import { DIRECTION, DIRECTION_OFFSET, type Direction, type Position } from './direction';
 import { generateBoard } from './boardGenerator';
@@ -680,8 +682,7 @@ export class GameScene extends Phaser.Scene {
     if (this.gameEnded || !this.attackInputEnabled) return;
 
     const target = this.findAttackTarget();
-    if (!target) return;
-
+    const facingVector = this.getFacingUnitVector();
     const projectile = this.add.circle(
       this.boardX + this.playerPos.x * this.cellSize,
       this.gridY + this.playerPos.y * this.cellSize,
@@ -690,18 +691,27 @@ export class GameScene extends Phaser.Scene {
       1
     ).setDepth(12).setStrokeStyle(2, 0xd8feff, 1);
 
-    const targetX = this.boardX + (target.kind === 'monster' ? target.monster.pos.x : target.position.x + 0.5) * this.cellSize;
-    const targetY = this.gridY + (target.kind === 'monster' ? target.monster.pos.y : target.position.y + 0.5) * this.cellSize;
+    const targetPoint = target
+      ? {
+          x: this.boardX + (target.kind === 'monster' ? target.monster.pos.x : target.position.x + 0.5) * this.cellSize,
+          y: this.gridY + (target.kind === 'monster' ? target.monster.pos.y : target.position.y + 0.5) * this.cellSize
+        }
+      : {
+          x: this.boardX + (this.playerPos.x + facingVector.x * PROJECTILE_TRAVEL_CELLS) * this.cellSize,
+          y: this.gridY + (this.playerPos.y + facingVector.y * PROJECTILE_TRAVEL_CELLS) * this.cellSize
+        };
 
     this.tweens.add({
       targets: projectile,
-      x: targetX,
-      y: targetY,
-      duration: 90,
+      x: targetPoint.x,
+      y: targetPoint.y,
+      duration: PROJECTILE_TRAVEL_DURATION_MS,
       ease: 'Linear',
       onComplete: () => {
         projectile.destroy();
-        this.resolveAttackHit(target);
+        if (target) {
+          this.resolveAttackHit(target);
+        }
       }
     });
   }
