@@ -1,9 +1,9 @@
 import { BALANCE } from "../../data/balance";
-import type { ItemId } from "../../data/items";
+import { ALL_ITEM_IDS, type ItemId } from "../../data/items";
 
 export interface InventoryState {
   readonly capacity: number;
-  readonly items: Readonly<Record<ItemId, number>>;
+  readonly items: Readonly<Record<string, number>>;
   readonly coolants: number;
   readonly disablers: number;
   readonly potions: number;
@@ -15,17 +15,18 @@ export interface AddItemResult {
   readonly added: boolean;
 }
 
+export function createEmptyItemBag(seed?: Readonly<Partial<Record<ItemId, number>>>): Record<ItemId, number> {
+  const bag = Object.fromEntries(ALL_ITEM_IDS.map((itemId) => [itemId, 0])) as Record<ItemId, number>;
+  for (const itemId of ALL_ITEM_IDS) {
+    bag[itemId] = seed?.[itemId] ?? 0;
+  }
+  return bag;
+}
+
 export function createInitialInventory(): InventoryState {
   return {
     capacity: BALANCE.player.bagCapacity,
-    items: {
-      "item.ironOre": 0,
-      "item.copperOre": 0,
-      "item.blueCrystal": 0,
-      "item.emeraldOre": 0,
-      "item.minePart": 0,
-      "item.slimeCore": 0
-    },
+    items: createEmptyItemBag(),
     coolants: BALANCE.mining.initialCoolants,
     disablers: BALANCE.mining.initialDisablers,
     potions: BALANCE.mining.initialPotions,
@@ -33,8 +34,15 @@ export function createInitialInventory(): InventoryState {
   };
 }
 
+export function normalizeInventory(inventory: InventoryState): InventoryState {
+  return {
+    ...inventory,
+    items: createEmptyItemBag(inventory.items)
+  };
+}
+
 export function getUsedCapacity(inventory: InventoryState): number {
-  return Object.values(inventory.items).reduce((total, amount) => total + amount, 0);
+  return ALL_ITEM_IDS.reduce((total, itemId) => total + inventory.items[itemId], 0);
 }
 
 export function addItem(
@@ -54,10 +62,48 @@ export function addItem(
       ...inventory,
       items: {
         ...inventory.items,
-        [itemId]: inventory.items[itemId] + amount
+        [itemId]: (inventory.items[itemId] ?? 0) + amount
       }
     }
   };
+}
+
+export function addItems(
+  inventory: InventoryState,
+  items: Readonly<Partial<Record<ItemId, number>>>
+): AddItemResult {
+  let next = inventory;
+  for (const [itemId, amount] of Object.entries(items) as [ItemId, number][]) {
+    const result = addItem(next, itemId, amount);
+    if (!result.added) {
+      return { inventory, added: false };
+    }
+    next = result.inventory;
+  }
+  return { inventory: next, added: true };
+}
+
+export function hasItems(
+  inventory: InventoryState,
+  required: Readonly<Partial<Record<ItemId, number>>>
+): boolean {
+  return (Object.entries(required) as [ItemId, number][]).every(
+    ([itemId, amount]) => (inventory.items[itemId] ?? 0) >= amount
+  );
+}
+
+export function removeItems(
+  inventory: InventoryState,
+  required: Readonly<Partial<Record<ItemId, number>>>
+): InventoryState | undefined {
+  if (!hasItems(inventory, required)) {
+    return undefined;
+  }
+  const nextItems = { ...inventory.items };
+  for (const [itemId, amount] of Object.entries(required) as [ItemId, number][]) {
+    nextItems[itemId] = (nextItems[itemId] ?? 0) - amount;
+  }
+  return { ...inventory, items: nextItems };
 }
 
 export function consumeCoolant(inventory: InventoryState): InventoryState | undefined {
@@ -72,4 +118,11 @@ export function consumeDisabler(inventory: InventoryState): InventoryState | und
     return undefined;
   }
   return { ...inventory, disablers: inventory.disablers - 1 };
+}
+
+export function consumePotion(inventory: InventoryState): InventoryState | undefined {
+  if (inventory.potions <= 0) {
+    return undefined;
+  }
+  return { ...inventory, potions: inventory.potions - 1 };
 }

@@ -1,9 +1,11 @@
 import type { AreaId } from "../data/areas";
 
-export interface RouteState {
-  readonly selectedAreaId: AreaId;
+let selectedAreaId: AreaId = "area.beginnerMine";
+
+export function getSelectedAreaId(): AreaId {
+  return selectedAreaId;
 }
 
-export const routeState: RouteState = {
-  selectedAreaId: "area.beginnerMine"
-};
+export function setSelectedAreaId(areaId: AreaId): void {
+  selectedAreaId = areaId;
+}
