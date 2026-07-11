@@ -35,5 +35,15 @@ export default defineConfig({
   },
   server: {
     host: "127.0.0.1"
+  },
+  build: {
+    chunkSizeWarningLimit: 1300,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          phaser: ["phaser"]
+        }
+      }
+    }
   }
 });

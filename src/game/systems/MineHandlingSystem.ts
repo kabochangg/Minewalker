@@ -1,7 +1,7 @@
-import type { InventoryState } from "./InventorySystem";
-import { consumeCoolant, consumeDisabler } from "./InventorySystem";
 import type { Minefield, Tile } from "../map/types";
 import { replaceTile } from "../map/types";
+import type { InventoryState } from "./InventorySystem";
+import { consumeCoolant, consumeDisabler } from "./InventorySystem";
 
 export interface MineActionResult {
   readonly field: Minefield;
@@ -26,11 +26,11 @@ export function coolMine(
   tile: Tile
 ): MineActionResult {
   if (!tile.hasMine || tile.state === "disabledMine") {
-    return { field, inventory, message: "ここに冷却する地雷はない", success: false };
+    return { field, inventory, message: "ここに冷却できる地雷はありません", success: false };
   }
   const nextInventory = consumeCoolant(inventory);
   if (!nextInventory) {
-    return { field, inventory, message: "冷却剤が足りない", success: false };
+    return { field, inventory, message: "冷却剤が足りません", success: false };
   }
   return {
     field: replaceTile(field, {
@@ -39,7 +39,7 @@ export function coolMine(
       mark: "none"
     }),
     inventory: nextInventory,
-    message: "冷却して壊せるようになった",
+    message: "地雷を冷却しました",
     success: true
   };
 }
@@ -50,11 +50,11 @@ export function disableMine(
   tile: Tile
 ): MineActionResult {
   if (!tile.hasMine) {
-    return { field, inventory, message: "ここに解除する地雷はない", success: false };
+    return { field, inventory, message: "ここに解除できる地雷はありません", success: false };
   }
   const nextInventory = consumeDisabler(inventory);
   if (!nextInventory) {
-    return { field, inventory, message: "解除装置が足りない", success: false };
+    return { field, inventory, message: "解除装置が足りません", success: false };
   }
   return {
     field: replaceTile(field, {
@@ -63,7 +63,7 @@ export function disableMine(
       mark: "none"
     }),
     inventory: nextInventory,
-    message: "地雷を解除した",
+    message: "地雷を解除しました",
     success: true
   };
 }

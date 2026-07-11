@@ -28,13 +28,13 @@ export function mineTile(
   seedSuffix: string
 ): MiningResult {
   if (!isAdjacent(player, tile)) {
-    return { field, player, inventory, message: "隣の壁だけ採掘できる", mined: false, exploded: false };
+    return { field, player, inventory, message: "隣の壁だけ採掘できます", mined: false, exploded: false };
   }
   if (tile.isWalkable || tile.state === "blocked") {
-    return { field, player, inventory, message: "ここは採掘できない", mined: false, exploded: false };
+    return { field, player, inventory, message: "ここは採掘できません", mined: false, exploded: false };
   }
   if (player.stamina < BALANCE.mining.staminaCost) {
-    return { field, player, inventory, message: "スタミナが足りない", mined: false, exploded: false };
+    return { field, player, inventory, message: "スタミナが足りません", mined: false, exploded: false };
   }
 
   const nextPlayer = {
@@ -48,7 +48,7 @@ export function mineTile(
       field: replaceTile(field, { ...tile, durability: nextDurability }),
       player: nextPlayer,
       inventory,
-      message: "壁にひびが入った",
+      message: "壁にひびが入りました",
       mined: true,
       exploded: false
     };
@@ -66,7 +66,7 @@ export function mineTile(
       }),
       player: damagePlayer(nextPlayer, BALANCE.mine.normalDamage),
       inventory,
-      message: "未処理地雷が爆発した",
+      message: "未処理地雷が爆発しました",
       mined: true,
       exploded: true
     };
@@ -91,7 +91,7 @@ export function mineTile(
       field: replaceTile(field, revealedTile),
       player: nextPlayer,
       inventory,
-      message: "通路が開いた",
+      message: "通路が開きました",
       mined: true,
       exploded: false
     };
@@ -102,7 +102,7 @@ export function mineTile(
     field: replaceTile(field, { ...revealedTile, state: addResult.added ? "revealedFloor" : "item" }),
     player: nextPlayer,
     inventory: addResult.inventory,
-    message: addResult.added ? "素材を手に入れた" : "バッグがいっぱいだ",
+    message: addResult.added ? "素材を手に入れました" : "バッグがいっぱいです",
     mined: true,
     exploded: false,
     gainedItemId: addResult.added ? drop.itemId : undefined,

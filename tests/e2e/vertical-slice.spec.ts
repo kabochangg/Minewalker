@@ -1,9 +1,16 @@
 import { expect, test } from "@playwright/test";
 
-test("title to exploration smoke flow", async ({ page }) => {
+async function openFreshTitle(page: import("@playwright/test").Page): Promise<void> {
   await page.goto("/");
   const canvas = page.locator("canvas");
   await expect(canvas).toBeVisible();
+  await page.mouse.click(195, 548);
+  await page.waitForTimeout(200);
+}
+
+test("title to exploration smoke flow", async ({ page }) => {
+  await openFreshTitle(page);
+  const canvas = page.locator("canvas");
 
   await page.mouse.click(195, 570);
   await page.waitForTimeout(200);
@@ -23,7 +30,7 @@ test("title to exploration smoke flow", async ({ page }) => {
 });
 
 test("in-game menu can return to home", async ({ page }) => {
-  await page.goto("/");
+  await openFreshTitle(page);
   await page.mouse.click(195, 570);
   await page.mouse.click(288, 172);
   await page.mouse.click(234, 790);
@@ -34,5 +41,14 @@ test("in-game menu can return to home", async ({ page }) => {
   await page.mouse.click(195, 405);
   await page.waitForTimeout(200);
 
+  await expect(page.locator("canvas")).toBeVisible();
+});
+
+test("settings survive reload smoke flow", async ({ page }) => {
+  await openFreshTitle(page);
+  await page.mouse.click(308, 684);
+  await page.waitForTimeout(100);
+  await page.mouse.click(195, 220);
+  await page.reload();
   await expect(page.locator("canvas")).toBeVisible();
 });
