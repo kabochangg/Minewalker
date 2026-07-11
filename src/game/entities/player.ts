@@ -33,8 +33,8 @@ export function createInitialPlayer(): PlayerState {
     maxStamina: BALANCE.player.maxStamina,
     attack: BALANCE.player.attack,
     defense: BALANCE.player.defense,
-    coins: 1_250,
-    depth: 23,
+    coins: 0,
+    depth: 0,
     actionState: "idle"
   };
 }

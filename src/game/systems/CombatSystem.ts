@@ -24,7 +24,7 @@ export function attackMonster(
   return {
     player: { ...player, actionState: "attacking" },
     monster: { ...monster, hp },
-    message: hp === 0 ? `${monsterDefinition.name}を倒した` : "スイング!",
+    message: hp === 0 ? `${monsterDefinition.name}を倒しました` : `${damage}ダメージ`,
     defeated: hp === 0
   };
 }

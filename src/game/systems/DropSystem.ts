@@ -44,12 +44,17 @@ export function rollWeightedDropWithRandom(
 }
 
 export const WALL_DROPS: readonly DropEntry[] = [
+  { itemId: "item.stone", weight: 8, min: 1, max: 3 },
+  { itemId: "item.coal", weight: 5, min: 1, max: 2 },
   { itemId: "item.ironOre", weight: 6, min: 1, max: 2 },
-  { itemId: "item.copperOre", weight: 3, min: 1, max: 1 },
-  { itemId: "item.blueCrystal", weight: 1, min: 1, max: 1 }
+  { itemId: "item.copperOre", weight: 4, min: 1, max: 2 },
+  { itemId: "item.blueCrystal", weight: 2, min: 1, max: 1 },
+  { itemId: "item.herb", weight: 2, min: 1, max: 1 }
 ];
 
 export const MINE_DROPS: readonly DropEntry[] = [
   { itemId: "item.minePart", weight: 5, min: 1, max: 2 },
+  { itemId: "item.coolantGel", weight: 3, min: 1, max: 2 },
+  { itemId: "item.fuseCore", weight: 1, min: 1, max: 1 },
   { itemId: "item.emeraldOre", weight: 1, min: 1, max: 1 }
 ];
