@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Minewalker">
+  <rect width="64" height="64" rx="12" fill="#1c130c"/>
+  <path d="M12 46h40v8H12z" fill="#3b2a1b"/>
+  <path d="M19 16h26l6 8-19 24L13 24z" fill="#1e91ff"/>
+  <path d="M19 16l13 32 13-32z" fill="#61d9ff"/>
+  <path d="M13 24h38" stroke="#c8f7ff" stroke-width="3"/>
+  <path d="M10 12l8-5 12 20-8 5z" fill="#d69a38"/>
+  <path d="M17 7l6-4 12 20-5 4z" fill="#f7d36a"/>
+</svg>
