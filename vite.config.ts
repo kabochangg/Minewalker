@@ -5,7 +5,12 @@ export default defineConfig({
   plugins: [
     VitePWA({
       registerType: "autoUpdate",
-      includeAssets: ["favicon.svg"],
+      includeAssets: [
+        "favicon.png",
+        "icons/icon-192.png",
+        "icons/icon-512.png",
+        "icons/icon-maskable-512.png",
+      ],
       manifest: {
         name: "Minewalker",
         short_name: "Minewalker",
@@ -17,33 +22,46 @@ export default defineConfig({
         start_url: "/",
         icons: [
           {
-            src: "/icons/icon.svg",
+            src: "/icons/icon-192.png",
+            sizes: "192x192",
+            type: "image/png",
+            purpose: "any",
+          },
+          {
+            src: "/icons/icon-512.png",
             sizes: "512x512",
-            type: "image/svg+xml",
-            purpose: "any maskable"
-          }
-        ]
+            type: "image/png",
+            purpose: "any",
+          },
+          {
+            src: "/icons/icon-maskable-512.png",
+            sizes: "512x512",
+            type: "image/png",
+            purpose: "maskable",
+          },
+        ],
       },
       workbox: {
-        globPatterns: ["**/*.{js,css,html,svg,png,webp,woff2}"]
-      }
-    })
+        globPatterns: ["**/*.{js,css,html,svg,png,webp,woff2}"],
+        navigateFallback: "/index.html",
+      },
+    }),
   ],
   test: {
     environment: "node",
-    include: ["src/tests/**/*.test.ts", "tests/unit/**/*.test.ts"]
+    include: ["src/tests/**/*.test.ts", "tests/unit/**/*.test.ts"],
   },
   server: {
-    host: "127.0.0.1"
+    host: "127.0.0.1",
   },
   build: {
     chunkSizeWarningLimit: 1300,
     rollupOptions: {
       output: {
         manualChunks: {
-          phaser: ["phaser"]
-        }
-      }
-    }
-  }
+          phaser: ["phaser"],
+        },
+      },
+    },
+  },
 });
