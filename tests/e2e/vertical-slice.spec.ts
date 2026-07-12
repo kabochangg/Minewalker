@@ -1,6 +1,8 @@
 import { expect, test } from "@playwright/test";
 
-async function openFreshTitle(page: import("@playwright/test").Page): Promise<void> {
+async function openFreshTitle(
+  page: import("@playwright/test").Page,
+): Promise<void> {
   await page.goto("/");
   const canvas = page.locator("canvas");
   await expect(canvas).toBeVisible();
@@ -49,6 +51,19 @@ test("settings survive reload smoke flow", async ({ page }) => {
   await page.mouse.click(308, 684);
   await page.waitForTimeout(100);
   await page.mouse.click(195, 220);
+  await page.reload();
+  await expect(page.locator("canvas")).toBeVisible();
+});
+
+test("production shell remains available offline", async ({
+  page,
+  context,
+}) => {
+  await page.goto("/");
+  await expect(page.locator("canvas")).toBeVisible();
+  await page.waitForFunction(() => "serviceWorker" in navigator);
+  await page.waitForTimeout(1_000);
+  await context.setOffline(true);
   await page.reload();
   await expect(page.locator("canvas")).toBeVisible();
 });

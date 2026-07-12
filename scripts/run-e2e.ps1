@@ -1,9 +1,21 @@
 $ErrorActionPreference = "Stop"
 
 $root = Split-Path -Parent $PSScriptRoot
+$build = Start-Process `
+  -FilePath "npm.cmd" `
+  -ArgumentList "run", "build" `
+  -WorkingDirectory $root `
+  -WindowStyle Hidden `
+  -Wait `
+  -PassThru
+
+if ($build.ExitCode -ne 0) {
+  throw "Production build failed before E2E."
+}
+
 $server = Start-Process `
   -FilePath "node" `
-  -ArgumentList "node_modules/vite/bin/vite.js", "--host", "127.0.0.1", "--port", "4173" `
+  -ArgumentList "node_modules/vite/bin/vite.js", "preview", "--host", "127.0.0.1", "--port", "4173" `
   -WorkingDirectory $root `
   -WindowStyle Hidden `
   -PassThru

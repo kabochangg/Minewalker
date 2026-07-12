@@ -1,5 +1,11 @@
 import Phaser from "phaser";
 import { getSelectedAreaId } from "../../app/routeState";
+import {
+  ASSET_KEYS,
+  getMonsterAssetKey,
+  getTileAssetKey,
+  type TileVisual,
+} from "../../assets/assetCatalog";
 import { getArea } from "../../data/areas";
 import { getItemName } from "../../data/items";
 import { getMonster, type MonsterId } from "../../data/monsters";
@@ -14,9 +20,13 @@ import {
   consumePotion,
   createEmptyItemBag,
   getUsedCapacity,
-  type InventoryState
+  type InventoryState,
 } from "../systems/InventorySystem";
-import { coolMine, disableMine, toggleFlag } from "../systems/MineHandlingSystem";
+import {
+  coolMine,
+  disableMine,
+  toggleFlag,
+} from "../systems/MineHandlingSystem";
 import { generateMinefield } from "../systems/MinefieldSystem";
 import { mineTile } from "../systems/MiningSystem";
 import { tryMove } from "../systems/MovementSystem";
@@ -75,7 +85,7 @@ export class ExplorationScene extends Phaser.Scene {
       safeRadius: 1,
       seed: `minewalker:${area.id}:${Date.now()}`,
       startX: 4,
-      startY: 7
+      startY: 7,
     });
     const exitTile = getTile(generated, 9, 14);
     if (!exitTile) {
@@ -87,7 +97,7 @@ export class ExplorationScene extends Phaser.Scene {
       hasMine: false,
       mineId: undefined,
       isWalkable: false,
-      isRevealed: false
+      isRevealed: false,
     });
   }
 
@@ -104,7 +114,7 @@ export class ExplorationScene extends Phaser.Scene {
       attack: save.player.attack + equipment.attack,
       defense: save.player.defense + equipment.defense,
       coins: save.player.coins,
-      depth: 0
+      depth: 0,
     };
   }
 
@@ -116,7 +126,7 @@ export class ExplorationScene extends Phaser.Scene {
       coolants: save.inventory.coolants,
       disablers: save.inventory.disablers,
       potions: save.inventory.potions,
-      maps: save.inventory.maps
+      maps: save.inventory.maps,
     };
   }
 
@@ -124,18 +134,20 @@ export class ExplorationScene extends Phaser.Scene {
     const area = getArea(getSelectedAreaId());
     const spawns = [
       { tileX: 7, tileY: 5 },
-      { tileX: 3, tileY: 11 }
+      { tileX: 3, tileY: 11 },
     ];
-    return area.monsterIds.slice(0, area.id === "area.ancientSite" ? 2 : 1).map((monsterId, index) => {
-      const monster = getMonster(monsterId);
-      const spawn = spawns[index] ?? spawns[0];
-      return {
-        id: monsterId,
-        tileX: spawn.tileX,
-        tileY: spawn.tileY,
-        combatant: { hp: monster.hp, maxHp: monster.hp }
-      };
-    });
+    return area.monsterIds
+      .slice(0, area.id === "area.ancientSite" ? 2 : 1)
+      .map((monsterId, index) => {
+        const monster = getMonster(monsterId);
+        const spawn = spawns[index] ?? spawns[0];
+        return {
+          id: monsterId,
+          tileX: spawn.tileX,
+          tileY: spawn.tileY,
+          combatant: { hp: monster.hp, maxHp: monster.hp },
+        };
+      });
   }
 
   private render(): void {
@@ -156,7 +168,7 @@ export class ExplorationScene extends Phaser.Scene {
           depth: this.player.depth,
           inventory: this.inventory,
           defeatedMonsters: this.defeatedMonsters,
-          bossDefeated: this.bossDefeated
+          bossDefeated: this.bossDefeated,
         });
       });
     }
@@ -174,44 +186,90 @@ export class ExplorationScene extends Phaser.Scene {
   }
 
   private drawTiles(): void {
+    const theme = getArea(getSelectedAreaId()).theme;
     for (const tile of this.field.tiles) {
       const x = BOARD_X + tile.x * TILE_SIZE;
       const y = BOARD_Y + tile.y * TILE_SIZE;
-      const rect = this.add
-        .rectangle(x, y, TILE_SIZE - 2, TILE_SIZE - 2, this.getTileColor(tile), 1)
-        .setOrigin(0)
-        .setStrokeStyle(1, 0x2d251c)
-        .setInteractive({ useHandCursor: true });
-      rect.on("pointerup", (pointer: Phaser.Input.Pointer) => {
+      const visual = this.getTileVisual(tile);
+      const key = getTileAssetKey(theme, visual);
+      const hitTarget = this.textures.exists(key)
+        ? this.add
+            .image(x, y, key)
+            .setOrigin(0)
+            .setDisplaySize(TILE_SIZE - 1, TILE_SIZE - 1)
+        : this.add
+            .rectangle(
+              x,
+              y,
+              TILE_SIZE - 2,
+              TILE_SIZE - 2,
+              this.getTileColor(tile),
+              1,
+            )
+            .setOrigin(0)
+            .setStrokeStyle(1, 0x2d251c);
+      hitTarget.setInteractive({ useHandCursor: true });
+      hitTarget.on("pointerup", (pointer: Phaser.Input.Pointer) => {
         if (pointer.getDuration() > 450) {
           this.handleFlag(tile);
           return;
         }
         this.handleTileTap(tile);
       });
-      this.tileObjects.push(rect);
+      this.tileObjects.push(hitTarget);
 
       if (tile.isRevealed && tile.adjacentMineCount > 0) {
         this.tileObjects.push(
           this.add
-            .text(x + TILE_SIZE / 2, y + TILE_SIZE / 2, String(tile.adjacentMineCount), {
-              fontFamily: "sans-serif",
-              fontSize: "22px",
-              fontStyle: "bold",
-              color: this.getNumberColor(tile.adjacentMineCount)
-            })
-            .setOrigin(0.5)
+            .text(
+              x + TILE_SIZE / 2,
+              y + TILE_SIZE / 2,
+              String(tile.adjacentMineCount),
+              {
+                fontFamily: "sans-serif",
+                fontSize: "22px",
+                fontStyle: "bold",
+                color: this.getNumberColor(tile.adjacentMineCount),
+              },
+            )
+            .setOrigin(0.5),
         );
       }
       if (tile.mark === "flag") {
-        this.tileObjects.push(this.add.text(x + 17, y + 16, "⚑", { fontSize: "20px", color: "#ff563f" }).setOrigin(0.5));
+        this.tileObjects.push(
+          this.add
+            .text(x + 17, y + 16, "⚑", { fontSize: "20px", color: "#ff563f" })
+            .setOrigin(0.5),
+        );
       }
-      if (tile.hasMine && (tile.isRevealed || tile.state === "cooledMine" || tile.state === "disabledMine")) {
-        const symbol = tile.state === "cooledMine" ? "❄" : tile.state === "disabledMine" ? "✓" : "●";
-        this.tileObjects.push(this.add.text(x + 16, y + 16, symbol, { fontSize: "18px", color: "#ffd2c2" }).setOrigin(0.5));
+      if (
+        !this.textures.exists(key) &&
+        tile.hasMine &&
+        (tile.isRevealed ||
+          tile.state === "cooledMine" ||
+          tile.state === "disabledMine")
+      ) {
+        const symbol =
+          tile.state === "cooledMine"
+            ? "❄"
+            : tile.state === "disabledMine"
+              ? "✓"
+              : "●";
+        this.tileObjects.push(
+          this.add
+            .text(x + 16, y + 16, symbol, {
+              fontSize: "18px",
+              color: "#ffd2c2",
+            })
+            .setOrigin(0.5),
+        );
       }
-      if (tile.state === "exit") {
-        this.tileObjects.push(this.add.text(x + 16, y + 16, "▣", { fontSize: "21px", color: "#f5b83f" }).setOrigin(0.5));
+      if (!this.textures.exists(key) && tile.state === "exit") {
+        this.tileObjects.push(
+          this.add
+            .text(x + 16, y + 16, "▣", { fontSize: "21px", color: "#f5b83f" })
+            .setOrigin(0.5),
+        );
       }
     }
   }
@@ -219,6 +277,12 @@ export class ExplorationScene extends Phaser.Scene {
   private drawPlayer(): void {
     const x = BOARD_X + this.player.x * TILE_SIZE + TILE_SIZE / 2;
     const y = BOARD_Y + this.player.y * TILE_SIZE + TILE_SIZE / 2;
+    if (this.textures.exists(ASSET_KEYS.player)) {
+      this.tileObjects.push(
+        this.add.image(x, y, ASSET_KEYS.player).setDisplaySize(44, 44),
+      );
+      return;
+    }
     this.tileObjects.push(drawPixelMiner(this, x, y).setScale(0.95));
   }
 
@@ -227,41 +291,98 @@ export class ExplorationScene extends Phaser.Scene {
       const x = BOARD_X + monster.tileX * TILE_SIZE + TILE_SIZE / 2;
       const y = BOARD_Y + monster.tileY * TILE_SIZE + TILE_SIZE / 2;
       const definition = getMonster(monster.id);
-      const body = this.add
-        .circle(x, y + 3, definition.boss ? 16 : 13, definition.boss ? 0xa84fd4 : 0x65b83f)
-        .setStrokeStyle(2, 0x234914);
+      const assetKey = getMonsterAssetKey(monster.id);
+      const body = this.textures.exists(assetKey)
+        ? this.add
+            .image(x, y, assetKey)
+            .setDisplaySize(
+              definition.boss ? 50 : 40,
+              definition.boss ? 50 : 40,
+            )
+        : this.add
+            .circle(
+              x,
+              y + 3,
+              definition.boss ? 16 : 13,
+              definition.boss ? 0xa84fd4 : 0x65b83f,
+            )
+            .setStrokeStyle(2, 0x234914);
       const hpWidth = 28 * (monster.combatant.hp / monster.combatant.maxHp);
-      const hp = this.add.rectangle(x - 14, y - 17, hpWidth, 4, COLORS.red).setOrigin(0, 0.5);
+      const hp = this.add
+        .rectangle(x - 14, y - 17, hpWidth, 4, COLORS.red)
+        .setOrigin(0, 0.5);
       this.tileObjects.push(body, hp);
     }
   }
 
   private drawHud(): void {
     const area = getArea(getSelectedAreaId());
-    this.hudObjects.push(addHudBar(this, 82, 22, 132, this.player.hp, this.player.maxHp, COLORS.red, "HP"));
-    this.hudObjects.push(addHudBar(this, 82, 48, 132, this.player.stamina, this.player.maxStamina, COLORS.green, "ST"));
-    this.hudObjects.push(this.add.text(205, 26, `${this.player.coins}C`, { fontSize: "15px", color: COLORS.text }).setOrigin(0.5));
     this.hudObjects.push(
-      this.add
-        .text(288, 26, `袋 ${getUsedCapacity(this.inventory)}/${this.inventory.capacity}`, { fontSize: "15px", color: COLORS.text })
-        .setOrigin(0.5)
+      addHudBar(
+        this,
+        82,
+        22,
+        132,
+        this.player.hp,
+        this.player.maxHp,
+        COLORS.red,
+        "HP",
+      ),
+    );
+    this.hudObjects.push(
+      addHudBar(
+        this,
+        82,
+        48,
+        132,
+        this.player.stamina,
+        this.player.maxStamina,
+        COLORS.green,
+        "ST",
+      ),
     );
     this.hudObjects.push(
       this.add
-        .text(335, 58, `${area.name}\n${this.player.depth}m`, { fontSize: "12px", color: COLORS.text, align: "center" })
-        .setOrigin(0.5)
+        .text(205, 26, `${this.player.coins}C`, {
+          fontSize: "15px",
+          color: COLORS.text,
+        })
+        .setOrigin(0.5),
     );
-    this.hudObjects.push(addButton(this, 360, 104, 44, 44, "≡", () => this.openMenu()));
+    this.hudObjects.push(
+      this.add
+        .text(
+          288,
+          26,
+          `袋 ${getUsedCapacity(this.inventory)}/${this.inventory.capacity}`,
+          { fontSize: "15px", color: COLORS.text },
+        )
+        .setOrigin(0.5),
+    );
+    this.hudObjects.push(
+      this.add
+        .text(335, 58, `${area.name}\n${this.player.depth}m`, {
+          fontSize: "12px",
+          color: COLORS.text,
+          align: "center",
+        })
+        .setOrigin(0.5),
+    );
+    this.hudObjects.push(
+      addButton(this, 360, 104, 44, 44, "≡", () => this.openMenu()),
+    );
   }
 
   private drawMessage(): void {
-    const box = this.add.rectangle(195, 652, 298, 54, 0x14100b, 0.92).setStrokeStyle(2, COLORS.goldDark);
+    const box = this.add
+      .rectangle(195, 652, 298, 54, 0x14100b, 0.92)
+      .setStrokeStyle(2, COLORS.goldDark);
     const text = this.add
       .text(195, 652, this.message, {
         fontSize: "15px",
         color: COLORS.text,
         align: "center",
-        wordWrap: { width: 270 }
+        wordWrap: { width: 270 },
       })
       .setOrigin(0.5);
     this.hudObjects.push(box, text);
@@ -273,21 +394,37 @@ export class ExplorationScene extends Phaser.Scene {
       ["cool", "冷却", String(this.inventory.coolants)],
       ["disable", "解除", String(this.inventory.disablers)],
       ["potion", "回復", String(this.inventory.potions)],
-      ["bag", "バッグ", `${getUsedCapacity(this.inventory)}/${this.inventory.capacity}`]
+      [
+        "bag",
+        "バッグ",
+        `${getUsedCapacity(this.inventory)}/${this.inventory.capacity}`,
+      ],
     ];
     actions.forEach(([mode, label, count], index) => {
       const x = 43 + index * 76;
       const fill = this.mode === mode ? COLORS.goldDark : COLORS.panelLight;
       this.hudObjects.push(
-        addButton(this, x, 772, 66, 82, `${label}\n${count}`, () => {
-          this.mode = mode;
-          if (mode === "potion") {
-            this.usePotion();
-            return;
-          }
-          this.message = mode === "bag" ? `バッグ ${getUsedCapacity(this.inventory)}/${this.inventory.capacity}` : `${label}モード`;
-          this.render();
-        }, fill)
+        addButton(
+          this,
+          x,
+          772,
+          66,
+          82,
+          `${label}\n${count}`,
+          () => {
+            this.mode = mode;
+            if (mode === "potion") {
+              this.usePotion();
+              return;
+            }
+            this.message =
+              mode === "bag"
+                ? `バッグ ${getUsedCapacity(this.inventory)}/${this.inventory.capacity}`
+                : `${label}モード`;
+            this.render();
+          },
+          fill,
+        ),
       );
     });
   }
@@ -319,12 +456,18 @@ export class ExplorationScene extends Phaser.Scene {
     if (tile.isWalkable) {
       const next = tryMove(this.player, tile);
       this.player = { ...next, depth: Math.max(next.depth, tile.y) };
-      this.message = this.player.x === tile.x && this.player.y === tile.y ? "移動しました" : "隣の床へ移動できます";
+      this.message =
+        this.player.x === tile.x && this.player.y === tile.y
+          ? "移動しました"
+          : "隣の床へ移動できます";
       this.render();
       return;
     }
     if (tile.state === "exit") {
-      if (Math.abs(this.player.x - tile.x) + Math.abs(this.player.y - tile.y) === 1) {
+      if (
+        Math.abs(this.player.x - tile.x) + Math.abs(this.player.y - tile.y) ===
+        1
+      ) {
         this.cleared = true;
         this.message = "出口に到達しました";
       } else {
@@ -333,11 +476,22 @@ export class ExplorationScene extends Phaser.Scene {
       this.render();
       return;
     }
-    const result = mineTile(this.field, this.player, this.inventory, tile, String(Date.now()));
+    const result = mineTile(
+      this.field,
+      this.player,
+      this.inventory,
+      tile,
+      String(Date.now()),
+    );
     this.field = result.field;
-    this.player = { ...result.player, depth: Math.max(result.player.depth, tile.y) };
+    this.player = {
+      ...result.player,
+      depth: Math.max(result.player.depth, tile.y),
+    };
     this.inventory = result.inventory;
-    this.message = result.gainedItemId ? `${getItemName(result.gainedItemId)} x${result.gainedAmount}を入手` : result.message;
+    this.message = result.gainedItemId
+      ? `${getItemName(result.gainedItemId)} x${result.gainedAmount}を入手`
+      : result.message;
     if (this.player.hp <= 0) {
       this.failed = true;
       this.message = "探索失敗...";
@@ -347,16 +501,22 @@ export class ExplorationScene extends Phaser.Scene {
 
   private handleFlag(tile: Tile): void {
     this.field = toggleFlag(this.field, tile);
-    this.message = tile.mark === "flag" ? "フラグを外しました" : "地雷候補にマークしました";
+    this.message =
+      tile.mark === "flag" ? "フラグを外しました" : "地雷候補にマークしました";
     this.render();
   }
 
   private tryAttackMonster(tile: Tile): boolean {
-    const monster = this.monsters.find((candidate) => candidate.tileX === tile.x && candidate.tileY === tile.y);
+    const monster = this.monsters.find(
+      (candidate) => candidate.tileX === tile.x && candidate.tileY === tile.y,
+    );
     if (!monster) {
       return false;
     }
-    if (Math.abs(this.player.x - tile.x) + Math.abs(this.player.y - tile.y) !== 1) {
+    if (
+      Math.abs(this.player.x - tile.x) + Math.abs(this.player.y - tile.y) !==
+      1
+    ) {
       this.message = "敵へ近づこう";
       return true;
     }
@@ -367,24 +527,41 @@ export class ExplorationScene extends Phaser.Scene {
     if (result.defeated) {
       this.defeatedMonsters.push(monster.id);
       this.bossDefeated ||= definition.boss;
-      const drop = rollWeightedDrop(definition.drops, `${this.field.seed}:${monster.id}`);
+      const drop = rollWeightedDrop(
+        definition.drops,
+        `${this.field.seed}:${monster.id}`,
+      );
       if (drop) {
         const addResult = addItem(this.inventory, drop.itemId, drop.amount);
         this.inventory = addResult.inventory;
-        this.message = addResult.added ? `${getItemName(drop.itemId)} x${drop.amount}を入手` : "バッグがいっぱいです";
+        this.message = addResult.added
+          ? `${getItemName(drop.itemId)} x${drop.amount}を入手`
+          : "バッグがいっぱいです";
       }
-      this.monsters = this.monsters.filter((candidate) => candidate !== monster);
+      this.monsters = this.monsters.filter(
+        (candidate) => candidate !== monster,
+      );
       const tileAtMonster = getTile(this.field, tile.x, tile.y);
       if (tileAtMonster) {
-        this.field = replaceTile(this.field, { ...tileAtMonster, state: "revealedFloor", isRevealed: true, isWalkable: true });
+        this.field = replaceTile(this.field, {
+          ...tileAtMonster,
+          state: "revealedFloor",
+          isRevealed: true,
+          isWalkable: true,
+        });
       }
     } else {
       this.monsters = this.monsters.map((candidate) =>
-        candidate === monster ? { ...candidate, combatant: result.monster } : candidate
+        candidate === monster
+          ? { ...candidate, combatant: result.monster }
+          : candidate,
       );
       this.player = {
         ...this.player,
-        hp: Math.max(0, this.player.hp - Math.max(1, definition.attack - this.player.defense))
+        hp: Math.max(
+          0,
+          this.player.hp - Math.max(1, definition.attack - this.player.defense),
+        ),
       };
       if (this.player.hp <= 0) {
         this.failed = true;
@@ -402,7 +579,11 @@ export class ExplorationScene extends Phaser.Scene {
       return;
     }
     this.inventory = nextInventory;
-    this.player = { ...this.player, hp: Math.min(this.player.maxHp, this.player.hp + 35), actionState: "usingItem" };
+    this.player = {
+      ...this.player,
+      hp: Math.min(this.player.maxHp, this.player.hp + 35),
+      actionState: "usingItem",
+    };
     this.message = "HPを回復しました";
     this.render();
   }
@@ -411,17 +592,49 @@ export class ExplorationScene extends Phaser.Scene {
     this.clearObjects(this.hudObjects);
     this.drawHud();
     const overlay = this.add.rectangle(195, 422, 390, 844, 0x000000, 0.58);
-    const panel = this.add.rectangle(195, 420, 270, 360, COLORS.panel, 0.98).setStrokeStyle(2, COLORS.goldDark);
+    const panel = this.add
+      .rectangle(195, 420, 270, 360, COLORS.panel, 0.98)
+      .setStrokeStyle(2, COLORS.goldDark);
     this.hudObjects.push(overlay, panel);
-    this.hudObjects.push(this.add.text(195, 285, "メニュー", { fontSize: "24px", color: COLORS.text, fontStyle: "bold" }).setOrigin(0.5));
-    this.hudObjects.push(addButton(this, 195, 345, 210, 48, "続ける", () => this.render()));
-    this.hudObjects.push(addButton(this, 195, 405, 210, 48, "拠点へ戻る", () => this.scene.start("HomeScene")));
-    this.hudObjects.push(addButton(this, 195, 465, 210, 48, `持ち物 ${getUsedCapacity(this.inventory)}/${this.inventory.capacity}`, () => undefined));
-    this.hudObjects.push(addButton(this, 195, 525, 210, 48, "設定", () => this.scene.start("SettingsScene")));
-    this.hudObjects.push(addButton(this, 195, 585, 210, 48, "あきらめる", () => {
-      this.failed = true;
-      this.render();
-    }));
+    this.hudObjects.push(
+      this.add
+        .text(195, 285, "メニュー", {
+          fontSize: "24px",
+          color: COLORS.text,
+          fontStyle: "bold",
+        })
+        .setOrigin(0.5),
+    );
+    this.hudObjects.push(
+      addButton(this, 195, 345, 210, 48, "続ける", () => this.render()),
+    );
+    this.hudObjects.push(
+      addButton(this, 195, 405, 210, 48, "拠点へ戻る", () =>
+        this.scene.start("HomeScene"),
+      ),
+    );
+    this.hudObjects.push(
+      addButton(
+        this,
+        195,
+        465,
+        210,
+        48,
+        `持ち物 ${getUsedCapacity(this.inventory)}/${this.inventory.capacity}`,
+        () => undefined,
+      ),
+    );
+    this.hudObjects.push(
+      addButton(this, 195, 525, 210, 48, "設定", () =>
+        this.scene.start("SettingsScene"),
+      ),
+    );
+    this.hudObjects.push(
+      addButton(this, 195, 585, 210, 48, "あきらめる", () => {
+        this.failed = true;
+        this.render();
+      }),
+    );
   }
 
   private getAreaGlow(): number {
@@ -452,6 +665,19 @@ export class ExplorationScene extends Phaser.Scene {
       return 0x45351d;
     }
     return tile.hasMine ? 0x50463c : 0x5d5a55;
+  }
+
+  private getTileVisual(tile: Tile): TileVisual {
+    if (tile.state === "exit") {
+      return "exit";
+    }
+    if (tile.state === "cooledMine" || tile.state === "disabledMine") {
+      return "disabledMine";
+    }
+    if (tile.hasMine && tile.isRevealed) {
+      return "mine";
+    }
+    return tile.isRevealed ? "floor" : "wall";
   }
 
   private getNumberColor(value: number): string {
