@@ -101,7 +101,12 @@ test("complete exploration loop mines, treats a mine, gains an item, exits, and 
     snapshots.afterWall.usedCapacity,
   );
   expect(snapshots.afterExit.cleared).toBe(true);
-  await page.waitForTimeout(800);
+  await page.waitForFunction(() => {
+    const raw = localStorage.getItem("minewalker.save.v2");
+    if (!raw) return false;
+    const saved = JSON.parse(raw) as { statistics?: { clears?: number } };
+    return saved.statistics?.clears === 1;
+  });
   await clickGamePoint(page, 118, 720);
   await expect(page.locator("canvas")).toBeVisible();
   const saved = await page.evaluate(() =>
