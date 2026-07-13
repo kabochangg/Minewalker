@@ -16,7 +16,7 @@ export function createGame(): Phaser.Game {
   const config: Phaser.Types.Core.GameConfig = {
     type: Phaser.AUTO,
     parent: "game-root",
-    backgroundColor: "#0b0f12",
+    backgroundColor: "#0a0f12",
     pixelArt: true,
     antialias: false,
     roundPixels: true,

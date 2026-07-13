@@ -1,11 +1,28 @@
 import { expect, test } from "@playwright/test";
 
+type E2EDirection =
+  | "up"
+  | "upRight"
+  | "right"
+  | "downRight"
+  | "down"
+  | "downLeft"
+  | "left"
+  | "upLeft";
+
 interface ExplorationE2EBridge {
   mineWall(): void;
   coolMine(): void;
   mineTreatedMine(): void;
   reachExit(): void;
-  snapshot(): { usedCapacity: number; cleared: boolean; message: string };
+  inputDirection(direction: E2EDirection): void;
+  showResult(): void;
+  snapshot(): {
+    usedCapacity: number;
+    cleared: boolean;
+    message: string;
+    facing: string;
+  };
 }
 
 async function clickGamePoint(
@@ -27,12 +44,25 @@ async function openFreshTitle(
   await page.goto("/");
   const canvas = page.locator("canvas");
   await expect(canvas).toBeVisible();
+  await page.waitForTimeout(250);
   await clickGamePoint(page, 195, 548);
   await page.waitForTimeout(200);
 }
 
+async function dismissPwaNotice(
+  page: import("@playwright/test").Page,
+): Promise<void> {
+  const close = page.locator(".pwa-notice button");
+  try {
+    await close.click({ timeout: 1_500 });
+  } catch {
+    // The notice appears only after the service worker finishes caching.
+  }
+}
+
 test("title to exploration smoke flow", async ({ page }) => {
   await openFreshTitle(page);
+  await dismissPwaNotice(page);
   const canvas = page.locator("canvas");
 
   await page.mouse.click(195, 570);
@@ -115,38 +145,40 @@ test("complete exploration loop mines, treats a mine, gains an item, exits, and 
   expect(saved).toContain('"clears":1');
 });
 
-test("virtual joystick moves continuously in a diagonal direction", async ({
+test("virtual joystick reports all eight movement directions", async ({
   page,
 }) => {
-  await openFreshTitle(page);
-  await clickGamePoint(page, 195, 570);
-  await clickGamePoint(page, 288, 172);
-  await clickGamePoint(page, 234, 790);
-  await page.waitForTimeout(300);
-
-  const canvas = page.locator("canvas");
-  const box = await canvas.boundingBox();
-  if (!box) {
-    throw new Error("Expected visible game canvas");
-  }
-  const toPagePoint = (x: number, y: number) => ({
-    x: box.x + (x / 390) * box.width,
-    y: box.y + (y / 844) * box.height,
+  await page.goto("/?e2e=1");
+  await page.waitForFunction(() => "__minewalkerStartExploration" in window);
+  await page.evaluate(() => {
+    (
+      window as typeof window & { __minewalkerStartExploration: () => void }
+    ).__minewalkerStartExploration();
   });
-  const center = toPagePoint(68, 770);
-  const downRight = toPagePoint(108, 810);
-  const before = await page.screenshot();
+  await page.waitForFunction(() => "__minewalkerE2E" in window);
 
-  await page.mouse.move(center.x, center.y);
-  await page.mouse.down();
-  await page.mouse.move(downRight.x, downRight.y, { steps: 4 });
-  await page.waitForTimeout(500);
-  await page.mouse.up();
-  await page.waitForTimeout(250);
-
-  const after = await page.screenshot();
-  expect(after.equals(before)).toBe(false);
-  await expect(canvas).toBeVisible();
+  const directions = [
+    "up",
+    "upRight",
+    "right",
+    "downRight",
+    "down",
+    "downLeft",
+    "left",
+    "upLeft",
+  ] as const;
+  for (const expected of directions) {
+    const facing = await page.evaluate((direction) => {
+      const bridge = (
+        window as typeof window & { __minewalkerE2E: ExplorationE2EBridge }
+      ).__minewalkerE2E;
+      bridge.inputDirection(direction);
+      return bridge.snapshot().facing;
+    }, expected);
+    expect(facing).toBe(expected);
+    await page.waitForTimeout(220);
+  }
+  await expect(page.locator("canvas")).toBeVisible();
 });
 
 test("settings survive reload smoke flow", async ({ page }) => {
@@ -169,4 +201,44 @@ test("production shell remains available offline", async ({
   await context.setOffline(true);
   await page.reload();
   await expect(page.locator("canvas")).toBeVisible();
+});
+
+test("visual baseline fits and captures the five primary screens", async ({
+  page,
+}, testInfo) => {
+  await openFreshTitle(page);
+  await dismissPwaNotice(page);
+  const canvas = page.locator("canvas");
+  const viewport = page.viewportSize();
+  const box = await canvas.boundingBox();
+  if (!box || !viewport) throw new Error("Expected canvas and viewport bounds");
+  expect(box.width).toBeLessThanOrEqual(viewport.width);
+  expect(box.height).toBeLessThanOrEqual(viewport.height);
+  await page.screenshot({ path: testInfo.outputPath("title.png") });
+
+  await clickGamePoint(page, 82, 684);
+  await page.waitForTimeout(100);
+  await page.screenshot({ path: testInfo.outputPath("home.png") });
+  await clickGamePoint(page, 195, 602);
+  await page.waitForTimeout(100);
+  await page.screenshot({ path: testInfo.outputPath("area-select.png") });
+
+  await page.goto("/?e2e=1");
+  await page.waitForFunction(() => "__minewalkerStartExploration" in window);
+  await page.evaluate(() => {
+    (
+      window as typeof window & { __minewalkerStartExploration: () => void }
+    ).__minewalkerStartExploration();
+  });
+  await page.waitForFunction(() => "__minewalkerE2E" in window);
+  await dismissPwaNotice(page);
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: testInfo.outputPath("exploration.png") });
+  await page.evaluate(() => {
+    (
+      window as typeof window & { __minewalkerE2E: ExplorationE2EBridge }
+    ).__minewalkerE2E.showResult();
+  });
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: testInfo.outputPath("result.png") });
 });

@@ -9,7 +9,14 @@ import {
 } from "../../data/equipment";
 import { equipItem, getGameState } from "../state/GameState";
 import { getUsedCapacity } from "../systems/InventorySystem";
-import { addButton, addHudBar, addPanel, COLORS } from "./uiHelpers";
+import {
+  addButton,
+  addHudBar,
+  addPanel,
+  COLORS,
+  drawGameIcon,
+  type GameIcon,
+} from "./uiHelpers";
 
 export class LoadoutScene extends Phaser.Scene {
   private message = "装備をタップすると所持品を切り替えます";
@@ -74,6 +81,8 @@ export class LoadoutScene extends Phaser.Scene {
         `${equipment.name}\nT${equipment.tier}`,
         () => this.cycleEquipment(equipment.slot),
       );
+      const icon: GameIcon = ["pickaxe", "weapon", "armor"][index] as GameIcon;
+      drawGameIcon(this, 92 + index * 103, 196, icon, 0xffe08a).setScale(0.72);
     });
 
     const items = [
@@ -91,6 +100,17 @@ export class LoadoutScene extends Phaser.Scene {
     for (const [label, x, y] of items) {
       addButton(this, x, y, 92, 92, label, () => undefined);
     }
+    const itemIcons: readonly GameIcon[] = [
+      "coolant",
+      "disable",
+      "potion",
+      "bag",
+      "map",
+      "depth",
+    ];
+    items.forEach(([, x, y], index) => {
+      drawGameIcon(this, x, y - 25, itemIcons[index], 0xfff3d6).setScale(0.68);
+    });
 
     this.add
       .text(

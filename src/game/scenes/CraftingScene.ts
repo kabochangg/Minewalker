@@ -3,7 +3,15 @@ import { getItemName } from "../../data/items";
 import { RECIPES, type RecipeDefinition } from "../../data/recipes";
 import { getGameState, setGameState } from "../state/GameState";
 import { craftRecipe } from "../systems/CraftingSystem";
-import { addButton, addPanel, COLORS } from "./uiHelpers";
+import { hasItems } from "../systems/InventorySystem";
+import {
+  addButton,
+  addGameButton,
+  addPanel,
+  COLORS,
+  drawGameIcon,
+  type GameIcon,
+} from "./uiHelpers";
 
 export class CraftingScene extends Phaser.Scene {
   private message = "作成するレシピを選んでください";
@@ -45,7 +53,11 @@ export class CraftingScene extends Phaser.Scene {
       const owned =
         recipe.output.kind === "equipment" &&
         state.equipment.owned.includes(recipe.output.equipmentId);
-      addButton(
+      const craftable =
+        !owned &&
+        state.player.coins >= recipe.cost.coins &&
+        hasItems(state.inventory, recipe.cost.items);
+      addGameButton(
         this,
         x,
         y,
@@ -53,8 +65,29 @@ export class CraftingScene extends Phaser.Scene {
         62,
         owned ? `${recipe.name}\n所持済み` : recipe.name,
         () => this.craft(recipe),
-        owned ? 0x4a433b : COLORS.panelLight,
+        { state: owned ? "disabled" : craftable ? "selected" : "normal" },
       );
+      const icon: GameIcon =
+        recipe.output.kind === "equipment"
+          ? recipe.output.equipmentId.includes("armor")
+            ? "armor"
+            : recipe.output.equipmentId.includes("weapon")
+              ? "weapon"
+              : "pickaxe"
+          : recipe.output.consumable === "coolants"
+            ? "coolant"
+            : recipe.output.consumable === "disablers"
+              ? "disable"
+              : recipe.output.consumable === "potions"
+                ? "potion"
+                : "map";
+      drawGameIcon(
+        this,
+        x - 60,
+        y,
+        icon,
+        craftable ? 0xffe08a : 0xd3b98b,
+      ).setScale(0.7);
       this.add
         .text(x, y + 42, this.costLabel(recipe), {
           fontSize: "10px",

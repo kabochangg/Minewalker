@@ -3,7 +3,13 @@ import { EQUIPMENT } from "../../data/equipment";
 import { ITEMS } from "../../data/items";
 import { MONSTERS } from "../../data/monsters";
 import { getGameState } from "../state/GameState";
-import { addButton, addPanel, COLORS } from "./uiHelpers";
+import {
+  addButton,
+  addPanel,
+  COLORS,
+  drawGameIcon,
+  type GameIcon,
+} from "./uiHelpers";
 
 export class CollectionScene extends Phaser.Scene {
   constructor() {
@@ -69,6 +75,11 @@ export class CollectionScene extends Phaser.Scene {
     total: number,
     found: number,
   ): void {
+    const icon: GameIcon =
+      label === "素材" ? "ore" : label === "モンスター" ? "star" : "armor";
+    drawGameIcon(this, 45, y, icon, found > 0 ? 0xffb13b : 0x6d6257).setScale(
+      0.72,
+    );
     this.add
       .text(65, y, `${label} ${found}/${total}`, {
         fontSize: "17px",

@@ -51,6 +51,7 @@ export class SettingsScene extends Phaser.Scene {
         this.render();
       },
     );
+    this.drawToggle(286, 220, state.settings.sound);
     addButton(
       this,
       195,
@@ -66,6 +67,7 @@ export class SettingsScene extends Phaser.Scene {
         this.render();
       },
     );
+    this.drawToggle(286, 300, state.settings.vibration);
     addButton(
       this,
       195,
@@ -84,6 +86,7 @@ export class SettingsScene extends Phaser.Scene {
         this.render();
       },
     );
+    this.drawToggle(286, 380, !state.settings.reducedMotion);
     addButton(
       this,
       195,
@@ -102,6 +105,7 @@ export class SettingsScene extends Phaser.Scene {
         this.render();
       },
     );
+    this.drawToggle(286, 460, state.settings.textSize === "large");
     this.add
       .text(
         195,
@@ -118,5 +122,15 @@ export class SettingsScene extends Phaser.Scene {
     addButton(this, 195, 760, 160, 56, "戻る", () =>
       this.scene.start("HomeScene"),
     );
+  }
+
+  private drawToggle(x: number, y: number, active: boolean): void {
+    const g = this.add.graphics();
+    g.fillStyle(0x1c1510, 1);
+    g.fillRoundedRect(x - 22, y - 11, 44, 22, 11);
+    g.fillStyle(active ? COLORS.green : 0x4b4944, 1);
+    g.fillRoundedRect(x - 20, y - 9, 40, 18, 9);
+    g.fillStyle(active ? 0xffe08a : 0xd3b98b, 1);
+    g.fillCircle(x + (active ? 11 : -11), y, 7);
   }
 }

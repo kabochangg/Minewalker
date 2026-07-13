@@ -9,8 +9,10 @@ import {
 import {
   addButton,
   addHudBar,
+  addIconButton,
   addPanel,
   COLORS,
+  drawGameIcon,
   drawPixelMiner,
 } from "./uiHelpers";
 
@@ -64,7 +66,7 @@ export class HomeScene extends Phaser.Scene {
         { fontSize: "14px", color: COLORS.text },
       )
       .setOrigin(0.5);
-    addButton(this, 348, 70, 52, 52, "⚙", () =>
+    addIconButton(this, 348, 70, "settings", () =>
       this.scene.start("SettingsScene"),
     );
 
@@ -136,6 +138,10 @@ export class HomeScene extends Phaser.Scene {
     addButton(this, 311, 780, 70, 58, "設定", () =>
       this.scene.start("SettingsScene"),
     );
+    drawGameIcon(this, 62, 765, "home", 0xffe08a).setScale(0.6);
+    drawGameIcon(this, 145, 765, "pickaxe", 0xfff3d6).setScale(0.6);
+    drawGameIcon(this, 228, 765, "collection", 0xfff3d6).setScale(0.6);
+    drawGameIcon(this, 311, 765, "settings", 0xfff3d6).setScale(0.6);
   }
 
   private addUpgradeButton(upgradeId: UpgradeId, x: number, y: number): void {
@@ -165,14 +171,29 @@ export class HomeScene extends Phaser.Scene {
   private drawHomeMine(): void {
     const g = this.add.graphics();
     g.fillStyle(0x15110d);
-    g.fillRect(32, 98, 326, 220);
+    g.fillRoundedRect(32, 98, 326, 220, 10);
     g.fillStyle(0x2a1b10);
-    g.fillRect(120, 150, 140, 110);
+    g.fillRoundedRect(112, 146, 156, 118, 5);
     g.fillStyle(0x3e2916);
-    g.fillTriangle(110, 150, 190, 92, 270, 150);
-    g.fillStyle(0xffb13b, 0.75);
-    g.fillCircle(205, 190, 35);
+    g.fillTriangle(102, 151, 190, 92, 278, 151);
+    g.lineStyle(5, 0x735640, 1);
+    g.lineBetween(126, 150, 126, 268);
+    g.lineBetween(254, 150, 254, 268);
+    g.fillStyle(0xffb13b, 0.18);
+    g.fillCircle(205, 190, 48);
+    g.fillStyle(0xffb13b, 0.88);
+    g.fillCircle(205, 177, 7);
+    g.fillStyle(0x4e3b2d);
+    g.fillRoundedRect(44, 226, 72, 50, 4);
+    g.lineStyle(3, 0xffb13b, 0.65);
+    g.strokeRoundedRect(44, 226, 72, 50, 4);
+    g.fillStyle(0x443222);
+    g.fillRoundedRect(278, 212, 62, 66, 4);
+    g.fillStyle(0x735640);
+    g.fillRect(284, 220, 50, 6);
     g.fillStyle(0x365f8f);
-    g.fillTriangle(300, 225, 320, 170, 340, 225);
+    g.fillTriangle(292, 260, 316, 186, 340, 260);
+    g.fillStyle(0xffe08a, 0.9);
+    g.fillCircle(316, 212, 4);
   }
 }

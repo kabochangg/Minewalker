@@ -1,7 +1,8 @@
 import Phaser from "phaser";
 import { ASSET_KEYS } from "../../assets/assetCatalog";
 import { getGameState, setGameState } from "../state/GameState";
-import { addButton, COLORS, drawPixelMiner } from "./uiHelpers";
+import { visualHash, VISUAL_TOKENS } from "../visual/VisualSystem";
+import { addButton, addGameButton, COLORS, drawPixelMiner } from "./uiHelpers";
 
 export class TitleScene extends Phaser.Scene {
   constructor() {
@@ -12,13 +13,21 @@ export class TitleScene extends Phaser.Scene {
     this.cameras.main.setBackgroundColor("#101217");
     this.drawMineBackdrop();
     this.add
+      .text(199, 154, "Minewalker", {
+        fontFamily: "system-ui, sans-serif",
+        fontSize: "50px",
+        fontStyle: "bold",
+        color: "#4a260d",
+      })
+      .setOrigin(0.5);
+    this.add
       .text(195, 150, "Minewalker", {
-        fontFamily: "sans-serif",
+        fontFamily: "system-ui, sans-serif",
         fontSize: "50px",
         fontStyle: "bold",
         color: "#ffb13b",
-        stroke: "#3a1d08",
-        strokeThickness: 7,
+        stroke: "#1c1510",
+        strokeThickness: 3,
       })
       .setOrigin(0.5);
     this.add
@@ -34,7 +43,7 @@ export class TitleScene extends Phaser.Scene {
     } else {
       drawPixelMiner(this, 195, 360).setScale(2);
     }
-    addButton(
+    addGameButton(
       this,
       195,
       570,
@@ -42,16 +51,37 @@ export class TitleScene extends Phaser.Scene {
       74,
       "プレイ",
       () => this.scene.start("AreaSelectScene"),
-      COLORS.goldDark,
+      { state: "selected", icon: "play" },
     );
-    addButton(this, 82, 684, 110, 82, "ホーム", () =>
-      this.scene.start("HomeScene"),
+    addGameButton(
+      this,
+      82,
+      684,
+      110,
+      82,
+      "ホーム",
+      () => this.scene.start("HomeScene"),
+      { icon: "home" },
     );
-    addButton(this, 195, 684, 110, 82, "図鑑", () =>
-      this.scene.start("CollectionScene"),
+    addGameButton(
+      this,
+      195,
+      684,
+      110,
+      82,
+      "図鑑",
+      () => this.scene.start("CollectionScene"),
+      { icon: "collection" },
     );
-    addButton(this, 308, 684, 110, 82, "設定", () =>
-      this.scene.start("SettingsScene"),
+    addGameButton(
+      this,
+      308,
+      684,
+      110,
+      82,
+      "設定",
+      () => this.scene.start("SettingsScene"),
+      { icon: "settings" },
     );
     addButton(
       this,
@@ -122,20 +152,28 @@ export class TitleScene extends Phaser.Scene {
 
   private drawMineBackdrop(): void {
     const graphics = this.add.graphics();
-    graphics.fillStyle(0x17120e);
+    graphics.fillStyle(VISUAL_TOKENS.colors.cave);
     graphics.fillRect(0, 0, 390, 844);
     for (let y = 0; y < 844; y += 32) {
       for (let x = 0; x < 390; x += 32) {
-        const shade = Phaser.Math.Between(20, 42);
-        graphics.fillStyle((shade << 16) + (shade << 8) + shade);
-        graphics.fillRect(x + 1, y + 1, 30, 30);
+        const variant = visualHash(`title-cave:${x / 32}:${y / 32}:wall`) % 3;
+        graphics.fillStyle([0x201b16, 0x292018, 0x33271d][variant]);
+        graphics.fillRoundedRect(x + 1, y + 1, 30, 30, 7);
+        graphics.fillStyle(0x735640, 0.18);
+        graphics.fillCircle(x + 10 + variant * 4, y + 9, 4 + variant);
       }
     }
-    graphics.fillStyle(0x4a2f17, 0.9);
-    graphics.fillRect(70, 260, 250, 34);
-    graphics.fillRect(88, 250, 22, 150);
-    graphics.fillRect(280, 250, 22, 150);
-    graphics.fillStyle(0xffb13b, 0.25);
-    graphics.fillCircle(250, 320, 90);
+    graphics.fillStyle(0x0a0f12, 0.72);
+    graphics.fillTriangle(55, 500, 195, 225, 335, 500);
+    graphics.fillStyle(0xffb13b, 0.2);
+    graphics.fillCircle(195, 350, 128);
+    graphics.lineStyle(5, 0x735640, 0.9);
+    graphics.lineBetween(80, 520, 174, 390);
+    graphics.lineBetween(310, 520, 216, 390);
+    graphics.lineStyle(3, 0x1c1510, 1);
+    for (let y = 410; y <= 525; y += 24) {
+      const spread = (y - 390) * 0.72;
+      graphics.lineBetween(195 - spread, y, 195 + spread, y);
+    }
   }
 }

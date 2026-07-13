@@ -21,8 +21,12 @@ if (import.meta.env.VITE_E2E === "1") {
   const browserWindow = window as typeof window & {
     __minewalkerStartExploration?: () => void;
   };
-  browserWindow.__minewalkerStartExploration = () =>
+  browserWindow.__minewalkerStartExploration = () => {
+    for (const scene of game.scene.getScenes(false)) {
+      game.scene.stop(scene.scene.key);
+    }
     game.scene.start("ExplorationScene");
+  };
 }
 
 window.setTimeout(() => {

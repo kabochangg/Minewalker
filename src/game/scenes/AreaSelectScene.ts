@@ -3,7 +3,18 @@ import { AREAS, type AreaId } from "../../data/areas";
 import { setSelectedAreaId } from "../../app/routeState";
 import { loadRun } from "../../save/RunSaveSystem";
 import { getGameState, tryUnlockArea } from "../state/GameState";
-import { addButton, addHudBar, addPanel, COLORS } from "./uiHelpers";
+import {
+  getAreaVisualTheme,
+  type AreaVisualThemeId,
+} from "../visual/VisualSystem";
+import {
+  addButton,
+  addHudBar,
+  addIconButton,
+  addPanel,
+  COLORS,
+  drawGameIcon,
+} from "./uiHelpers";
 
 export class AreaSelectScene extends Phaser.Scene {
   private message = "探索先を選択してください";
@@ -42,7 +53,7 @@ export class AreaSelectScene extends Phaser.Scene {
       COLORS.green,
       "ST",
     );
-    addButton(this, 348, 62, 52, 52, "⚙", () =>
+    addIconButton(this, 348, 62, "settings", () =>
       this.scene.start("SettingsScene"),
     );
     this.add
@@ -57,6 +68,7 @@ export class AreaSelectScene extends Phaser.Scene {
       const unlocked = state.unlockedAreas.includes(area.id);
       const y = 178 + index * 112;
       addPanel(this, 195, y, 326, 92);
+      this.drawAreaThumbnail(area.theme, 69, y, unlocked);
       this.add
         .text(102, y - 24, area.name, {
           fontSize: "18px",
@@ -94,11 +106,48 @@ export class AreaSelectScene extends Phaser.Scene {
         () => this.selectArea(area.id, unlocked),
         unlocked ? COLORS.green : 0x555555,
       );
+      if (!unlocked) {
+        drawGameIcon(this, 288, y + 25, "lock", 0xd3b98b).setScale(0.65);
+      }
     });
 
     addButton(this, 82, 790, 120, 52, "戻る", () =>
       this.scene.start("HomeScene"),
     );
+  }
+
+  private drawAreaThumbnail(
+    themeId: AreaVisualThemeId,
+    x: number,
+    y: number,
+    unlocked: boolean,
+  ): void {
+    const theme = getAreaVisualTheme(themeId);
+    const g = this.add.graphics();
+    g.fillStyle(0x1c1510, 1);
+    g.fillRoundedRect(x - 30, y - 34, 60, 68, 6);
+    g.fillStyle(theme.cave, 1);
+    g.fillRoundedRect(x - 28, y - 32, 56, 64, 5);
+    g.fillStyle(theme.wall[1], unlocked ? 1 : 0.55);
+    g.fillCircle(x - 12, y - 11, 12);
+    g.fillCircle(x + 12, y - 8, 15);
+    g.fillStyle(theme.wallHighlight, unlocked ? 0.85 : 0.32);
+    g.fillCircle(x - 15, y - 15, 4);
+    g.fillCircle(x + 7, y - 14, 5);
+    g.fillStyle(theme.accent, unlocked ? 0.9 : 0.25);
+    if (theme.motif === "crystal") {
+      g.fillTriangle(x - 5, y + 25, x + 2, y, x + 8, y + 25);
+    } else if (theme.motif === "volcanic") {
+      g.lineStyle(3, theme.crack, unlocked ? 1 : 0.4);
+      g.lineBetween(x - 18, y + 22, x, y + 5);
+      g.lineBetween(x, y + 5, x + 18, y + 24);
+    } else if (theme.motif === "ancientBrick") {
+      g.fillRect(x - 21, y + 5, 18, 10);
+      g.fillRect(x + 1, y + 5, 20, 10);
+      g.fillRect(x - 11, y + 18, 22, 9);
+    } else {
+      g.fillCircle(x, y + 17, 8);
+    }
   }
 
   private selectArea(areaId: AreaId, unlocked: boolean): void {

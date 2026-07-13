@@ -1,15 +1,15 @@
 :root {
+  --color-void: #0a0f12;
+  --color-cave: #18140f;
+  --color-panel: #2b2118;
+  --color-lantern: #ffb13b;
+  --color-highlight: #ffe08a;
+  --color-text: #fff3d6;
+  --color-muted: #d3b98b;
   color-scheme: dark;
-  font-family:
-    "Hiragino Sans",
-    "Yu Gothic",
-    "Meiryo",
-    system-ui,
-    -apple-system,
-    BlinkMacSystemFont,
-    sans-serif;
-  background: #0b0f12;
-  color: #f7ead1;
+  font-family: system-ui, sans-serif;
+  background: var(--color-void);
+  color: var(--color-text);
 }
 
 * {
@@ -35,10 +35,11 @@ body {
       rgba(60, 42, 26, 0.55),
       transparent 32rem
     ),
-    #0b0f12;
+    var(--color-void);
 }
 
 canvas {
+  display: block;
   image-rendering: pixelated;
   image-rendering: crisp-edges;
 }
@@ -55,8 +56,8 @@ canvas {
   justify-content: space-between;
   gap: 12px;
   padding: 8px 10px 8px 14px;
-  color: #f7e5c4;
-  background: #24180f;
+  color: var(--color-text);
+  background: var(--color-panel);
   border: 2px solid #ad742e;
   border-radius: 8px;
   transform: translateX(-50%);
@@ -85,8 +86,8 @@ canvas {
   display: grid;
   place-content: center;
   justify-items: center;
-  background: #0b0f12;
-  color: #f7ead1;
+  background: var(--color-void);
+  color: var(--color-text);
 }
 
 #loading-screen img {
@@ -95,7 +96,7 @@ canvas {
 
 #loading-screen h1 {
   margin: 12px 0 0;
-  color: #ffb13b;
+  color: var(--color-lantern);
   font-size: 36px;
 }
 

@@ -3,7 +3,6 @@ import { getSelectedAreaId } from "../../app/routeState";
 import {
   ASSET_KEYS,
   getMonsterAssetKey,
-  getTileAssetKey,
   type TileVisual,
 } from "../../assets/assetCatalog";
 import { getArea } from "../../data/areas";
@@ -38,7 +37,24 @@ import {
   type MoveDirection,
 } from "../systems/MovementSystem";
 import { isPositionDiscovered } from "../systems/VisibilitySystem";
-import { addButton, addHudBar, COLORS, drawPixelMiner } from "./uiHelpers";
+import {
+  facingFromMoveDirection,
+  getAreaVisualTheme,
+  getMonsterVisualState,
+  getTileVisualVariant,
+  type FacingDirection,
+} from "../visual/VisualSystem";
+import {
+  addButton,
+  addGameButton,
+  addHudBar,
+  addIconButton,
+  COLORS,
+  drawGameIcon,
+  drawPixelMiner,
+  VISUAL_TOKENS,
+  type GameIcon,
+} from "./uiHelpers";
 
 type ActionMode = "mine" | "cool" | "disable" | "potion" | "bag";
 
@@ -54,10 +70,13 @@ interface ExplorationE2EBridge {
   readonly coolMine: () => void;
   readonly mineTreatedMine: () => void;
   readonly reachExit: () => void;
+  readonly inputDirection: (direction: MoveDirection) => void;
+  readonly showResult: () => void;
   readonly snapshot: () => {
     readonly usedCapacity: number;
     readonly cleared: boolean;
     readonly message: string;
+    readonly facing: FacingDirection;
   };
 }
 
@@ -90,13 +109,16 @@ export class ExplorationScene extends Phaser.Scene {
     x: number;
     y: number;
   };
+  private facing: FacingDirection = "down";
   private joystickKnob?: Phaser.GameObjects.Arc;
+  private joystickArrow?: Phaser.GameObjects.Triangle;
   private joystickPointerId?: number;
   private heldDirection?: MoveDirection;
   private queuedDirection?: MoveDirection;
   private moving = false;
   private readonly tileObjects: Phaser.GameObjects.GameObject[] = [];
   private readonly hudObjects: Phaser.GameObjects.GameObject[] = [];
+  private readonly discoveredMonsterKeys = new Set<string>();
 
   constructor() {
     super("ExplorationScene");
@@ -218,6 +240,7 @@ export class ExplorationScene extends Phaser.Scene {
     this.clearObjects(this.hudObjects);
     this.drawBackdrop();
     this.drawTiles();
+    this.drawLighting();
     this.drawPlayer();
     this.drawMonsters();
     this.drawHud();
@@ -244,16 +267,17 @@ export class ExplorationScene extends Phaser.Scene {
   }
 
   private drawBackdrop(): void {
+    const theme = getAreaVisualTheme(getArea(getSelectedAreaId()).theme);
     const graphics = this.add.graphics();
     this.tileObjects.push(graphics);
-    graphics.fillStyle(0x211a13);
+    graphics.fillStyle(theme.cave);
     graphics.fillRect(
       0,
       0,
       this.field.width * TILE_SIZE,
       this.field.height * TILE_SIZE,
     );
-    graphics.fillStyle(0x30251a, 0.42);
+    graphics.fillStyle(theme.wall[0], 0.3);
     for (let y = 18; y < this.field.height * TILE_SIZE; y += 54) {
       for (
         let x = 12 + ((y / 54) % 2) * 20;
@@ -263,36 +287,19 @@ export class ExplorationScene extends Phaser.Scene {
         graphics.fillEllipse(x, y, 42, 20);
       }
     }
-    graphics.fillStyle(this.getAreaGlow(), 0.055);
+    graphics.fillStyle(theme.glow, 0.045);
     graphics.fillEllipse(250, 350, 340, 250);
   }
 
   private drawTiles(): void {
-    const theme = getArea(getSelectedAreaId()).theme;
     for (const tile of this.field.tiles) {
       const x = BOARD_X + tile.x * TILE_SIZE;
       const y = BOARD_Y + tile.y * TILE_SIZE;
       const visual = this.getTileVisual(tile);
-      const key = getTileAssetKey(theme, visual);
       const hitTarget =
         visual === "wall"
           ? this.drawNaturalWallTile(x, y, tile)
-          : this.textures.exists(key)
-            ? this.add
-                .image(x, y, key)
-                .setOrigin(0)
-                .setDisplaySize(TILE_SIZE, TILE_SIZE)
-            : this.add
-                .rectangle(
-                  x,
-                  y,
-                  TILE_SIZE - 2,
-                  TILE_SIZE - 2,
-                  this.getTileColor(tile),
-                  1,
-                )
-                .setOrigin(0)
-                .setStrokeStyle(1, 0x2d251c);
+          : this.drawNaturalFloorTile(x, y, tile, visual);
       hitTarget.setInteractive({ useHandCursor: true });
       hitTarget.on("pointerup", (pointer: Phaser.Input.Pointer) => {
         if (pointer.getDuration() > 450) {
@@ -328,7 +335,6 @@ export class ExplorationScene extends Phaser.Scene {
         );
       }
       if (
-        !this.textures.exists(key) &&
         tile.hasMine &&
         (tile.isRevealed ||
           tile.state === "cooledMine" ||
@@ -349,7 +355,7 @@ export class ExplorationScene extends Phaser.Scene {
             .setOrigin(0.5),
         );
       }
-      if (!this.textures.exists(key) && tile.state === "exit") {
+      if (tile.state === "exit") {
         this.tileObjects.push(
           this.add
             .text(x + 16, y + 16, "▣", { fontSize: "21px", color: "#f5b83f" })
@@ -364,35 +370,184 @@ export class ExplorationScene extends Phaser.Scene {
     y: number,
     tile: Tile,
   ): Phaser.GameObjects.Rectangle {
-    const shades = [0x3b3026, 0x42352a, 0x49392c] as const;
-    const variant = Math.abs(tile.x * 7 + tile.y * 11) % shades.length;
+    const theme = getAreaVisualTheme(getArea(getSelectedAreaId()).theme);
+    const variant = getTileVisualVariant(
+      this.field.seed,
+      tile.x,
+      tile.y,
+      tile.state,
+    );
+    const adjacent = isAdjacent(this.player, tile);
+    const shade = theme.wall[variant % theme.wall.length];
     const base = this.add
-      .rectangle(x, y, TILE_SIZE, TILE_SIZE, shades[variant])
+      .rectangle(
+        x,
+        y,
+        TILE_SIZE,
+        TILE_SIZE,
+        adjacent ? lightenColor(shade, 22) : shade,
+      )
       .setOrigin(0)
-      .setStrokeStyle(1, 0x211913);
+      .setStrokeStyle(1, VISUAL_TOKENS.colors.rockOutline, 0.72);
     const stone = this.add.graphics();
-    stone.fillStyle(0x5a4636, 0.82);
-    stone.fillRoundedRect(x + 4, y + 5, 17, 11, 3);
-    stone.fillRoundedRect(x + 25, y + 4, 18, 14, 3);
-    stone.fillStyle(0x2e251e, 0.9);
-    stone.fillRoundedRect(x + 3, y + 22, 22, 17, 3);
-    stone.fillRoundedRect(x + 29, y + 24, 15, 14, 3);
-    stone.lineStyle(1, 0x6b5240, 0.65);
-    stone.strokeRoundedRect(x + 4, y + 5, 17, 11, 3);
-    stone.strokeRoundedRect(x + 25, y + 4, 18, 14, 3);
+    if (theme.motif === "ancientBrick") {
+      stone.lineStyle(2, theme.wallHighlight, 0.58);
+      stone.strokeRect(x + 3, y + 4, 20 + (variant % 2) * 5, 16);
+      stone.strokeRect(x + 26, y + 4, 18, 16);
+      stone.strokeRect(x + 7, y + 24, 25, 17);
+      stone.strokeRect(x + 34, y + 24, 11, 17);
+      stone.fillStyle(theme.accent, 0.22);
+      stone.fillRect(x + 22, y + 19, 4, 4);
+    } else {
+      const shift = variant * 2;
+      stone.fillStyle(theme.wallHighlight, 0.72);
+      stone.fillRoundedRect(
+        x + 3 + (shift % 5),
+        y + 5,
+        15 + (variant % 3) * 2,
+        10,
+        4,
+      );
+      stone.fillRoundedRect(x + 24, y + 3 + (shift % 4), 19, 14, 5);
+      stone.fillStyle(VISUAL_TOKENS.colors.rockOutline, 0.68);
+      stone.fillRoundedRect(x + 4, y + 23, 21, 16, 5);
+      stone.fillRoundedRect(x + 29, y + 25, 15, 13, 4);
+      stone.lineStyle(1, theme.wallHighlight, 0.42);
+      stone.strokeRoundedRect(
+        x + 3 + (shift % 5),
+        y + 5,
+        15 + (variant % 3) * 2,
+        10,
+        4,
+      );
+      if (theme.motif === "crystal") {
+        stone.fillStyle(theme.accent, 0.78);
+        stone.fillTriangle(x + 36, y + 29, x + 40, y + 15, x + 44, y + 29);
+      }
+      if (theme.motif === "volcanic") {
+        stone.lineStyle(2, theme.crack, 0.82);
+        stone.lineBetween(x + 10, y + 18, x + 17, y + 24);
+        stone.lineBetween(x + 17, y + 24, x + 13, y + 34);
+      }
+    }
     this.tileObjects.push(stone);
     return base;
+  }
+
+  private drawNaturalFloorTile(
+    x: number,
+    y: number,
+    tile: Tile,
+    visual: TileVisual,
+  ): Phaser.GameObjects.Rectangle {
+    const theme = getAreaVisualTheme(getArea(getSelectedAreaId()).theme);
+    const variant = getTileVisualVariant(
+      this.field.seed,
+      tile.x,
+      tile.y,
+      tile.state,
+      4,
+    );
+    const fill =
+      visual === "exit"
+        ? lightenColor(theme.floor[variant % 4], 18)
+        : visual === "mine"
+          ? 0x4a3028
+          : tile.state === "cooledMine"
+            ? 0x2d5f70
+            : tile.state === "disabledMine"
+              ? 0x665c35
+              : theme.floor[variant % 4];
+    const base = this.add
+      .rectangle(x, y, TILE_SIZE, TILE_SIZE, fill, 1)
+      .setOrigin(0)
+      .setStrokeStyle(1, VISUAL_TOKENS.colors.rockOutline, 0.22);
+    const detail = this.add.graphics();
+    if (visual === "exit") {
+      detail.fillStyle(theme.glow, 0.18);
+      detail.fillCircle(x + 24, y + 24, 21);
+      detail.lineStyle(3, theme.accent, 0.95);
+      detail.strokeRoundedRect(x + 7, y + 6, 34, 36, 5);
+      detail.lineBetween(x + 13, y + 33, x + 35, y + 33);
+    } else if (tile.adjacentMineCount === 0) {
+      detail.fillStyle(theme.wallHighlight, 0.24);
+      detail.fillEllipse(
+        x + 12 + (variant % 3) * 8,
+        y + 13 + (variant % 2) * 13,
+        9,
+        5,
+      );
+      detail.fillStyle(VISUAL_TOKENS.colors.rockOutline, 0.24);
+      detail.fillCircle(x + 34 - (variant % 2) * 9, y + 34, 3);
+    }
+    if (tile.state === "cooledMine") {
+      detail.lineStyle(2, VISUAL_TOKENS.colors.coolant, 0.82);
+      detail.strokeCircle(x + 24, y + 24, 14);
+    }
+    if (tile.state === "disabledMine") {
+      detail.lineStyle(2, VISUAL_TOKENS.colors.disable, 0.82);
+      detail.strokeRoundedRect(x + 9, y + 9, 30, 30, 5);
+    }
+    this.tileObjects.push(detail);
+    return base;
+  }
+
+  private drawLighting(): void {
+    const theme = getAreaVisualTheme(getArea(getSelectedAreaId()).theme);
+    const x = BOARD_X + this.player.x * TILE_SIZE + TILE_SIZE / 2;
+    const y = BOARD_Y + this.player.y * TILE_SIZE + TILE_SIZE / 2;
+    const outer = this.add.circle(x, y, TILE_SIZE * 3.5, theme.glow, 0.025);
+    const middle = this.add.circle(x, y, TILE_SIZE * 2.2, theme.glow, 0.035);
+    const inner = this.add.circle(
+      x,
+      y,
+      TILE_SIZE * 1.15,
+      VISUAL_TOKENS.colors.highlight,
+      0.055,
+    );
+    this.tileObjects.push(outer, middle, inner);
   }
 
   private drawPlayer(): void {
     const x = BOARD_X + this.player.x * TILE_SIZE + TILE_SIZE / 2;
     const y = BOARD_Y + this.player.y * TILE_SIZE + TILE_SIZE / 2;
     if (this.textures.exists(ASSET_KEYS.player)) {
-      const sprite = this.add
-        .image(x, y, ASSET_KEYS.player)
+      const shadow = this.add.ellipse(0, 17, 34, 11, 0x000000, 0.42);
+      const lampGlow = this.add.circle(
+        1,
+        -11,
+        12,
+        VISUAL_TOKENS.colors.highlight,
+        0.16,
+      );
+      const outline = this.add
+        .image(0, 0, ASSET_KEYS.player)
+        .setDisplaySize(63, 63)
+        .setTint(VISUAL_TOKENS.colors.rockOutline);
+      const image = this.add
+        .image(0, 0, ASSET_KEYS.player)
         .setDisplaySize(58, 58);
+      const flipX = this.facing.includes("Left") || this.facing === "left";
+      outline.setFlipX(flipX);
+      image.setFlipX(flipX);
+      const sprite = this.add.container(x, y, [
+        shadow,
+        lampGlow,
+        outline,
+        image,
+      ]);
       this.playerSprite = sprite;
       this.tileObjects.push(sprite);
+      if (!getGameState().settings.reducedMotion && !this.moving) {
+        this.tweens.add({
+          targets: image,
+          y: -2,
+          duration: 520,
+          yoyo: true,
+          repeat: -1,
+          ease: "Sine.InOut",
+        });
+      }
       this.followPlayer(sprite);
       return;
     }
@@ -451,29 +606,64 @@ export class ExplorationScene extends Phaser.Scene {
         this.handleTileInteraction(currentTile(mine));
       },
       reachExit: () => this.handleTileInteraction(currentTile(exit)),
+      inputDirection: (direction) => this.startDirectionalMove(direction),
+      showResult: () =>
+        this.scene.start("ResultScene", {
+          success: true,
+          depth: this.player.depth,
+          inventory: this.inventory,
+          defeatedMonsters: this.defeatedMonsters,
+          bossDefeated: this.bossDefeated,
+        }),
       snapshot: () => ({
         usedCapacity: getUsedCapacity(this.inventory),
         cleared: this.cleared,
         message: this.message,
+        facing: this.facing,
       }),
     };
   }
 
   private drawMonsters(): void {
+    const reducedMotion = getGameState().settings.reducedMotion;
     for (const monster of this.monsters) {
-      if (!this.isMonsterDiscovered(monster)) {
+      const visualState = getMonsterVisualState(
+        this.isMonsterDiscovered(monster),
+        monster.combatant.hp,
+        monster.combatant.maxHp,
+      );
+      if (!visualState.showBody) {
         continue;
       }
       const x = BOARD_X + monster.tileX * TILE_SIZE + TILE_SIZE / 2;
       const y = BOARD_Y + monster.tileY * TILE_SIZE + TILE_SIZE / 2;
       const definition = getMonster(monster.id);
       const assetKey = getMonsterAssetKey(monster.id);
+      const monsterKey = `${monster.id}:${monster.tileX}:${monster.tileY}`;
+      const newlyDiscovered = !this.discoveredMonsterKeys.has(monsterKey);
+      this.discoveredMonsterKeys.add(monsterKey);
+      const shadow = this.add.ellipse(
+        x,
+        y + (definition.boss ? 22 : 15),
+        definition.boss ? 50 : 30,
+        definition.boss ? 14 : 9,
+        0x000000,
+        0.4,
+      );
       const body = this.textures.exists(assetKey)
         ? this.add
             .image(x, y, assetKey)
             .setDisplaySize(
-              definition.boss ? 50 : 40,
-              definition.boss ? 50 : 40,
+              definition.boss
+                ? 72
+                : monster.id === "monster.rockGolem"
+                  ? 46
+                  : 40,
+              definition.boss
+                ? 72
+                : monster.id === "monster.rockGolem"
+                  ? 46
+                  : 40,
             )
         : this.add
             .circle(
@@ -483,11 +673,66 @@ export class ExplorationScene extends Phaser.Scene {
               definition.boss ? 0xa84fd4 : 0x65b83f,
             )
             .setStrokeStyle(2, 0x234914);
-      const hpWidth = 28 * (monster.combatant.hp / monster.combatant.maxHp);
-      const hp = this.add
-        .rectangle(x - 14, y - 17, hpWidth, 4, COLORS.red)
-        .setOrigin(0, 0.5);
-      this.tileObjects.push(body, hp);
+      this.tileObjects.push(shadow, body);
+      if (newlyDiscovered && !reducedMotion) {
+        body.setAlpha(0).setScale(0.72);
+        const alert = this.add
+          .text(x, y - 28, "!", {
+            fontFamily: "system-ui, sans-serif",
+            fontSize: "22px",
+            color: "#ffe08a",
+            fontStyle: "bold",
+          })
+          .setOrigin(0.5);
+        this.tileObjects.push(alert);
+        this.tweens.add({
+          targets: body,
+          alpha: 1,
+          scale: 1,
+          duration: VISUAL_TOKENS.motion.reveal,
+          ease: "Back.Out",
+        });
+        this.tweens.add({
+          targets: alert,
+          y: y - 38,
+          alpha: 0,
+          duration: 240,
+          onComplete: () => alert.destroy(),
+        });
+      }
+      if (!reducedMotion && body instanceof Phaser.GameObjects.Image) {
+        const isBat = monster.id === "monster.bat";
+        this.tweens.add({
+          targets: body,
+          [isBat ? "x" : "y"]: isBat ? x + 2 : y - 2,
+          duration: monster.id === "monster.rockGolem" ? 760 : 420,
+          yoyo: true,
+          repeat: -1,
+          ease: "Sine.InOut",
+        });
+      }
+      if (visualState.showHp) {
+        const hpWidth = 30 * (monster.combatant.hp / monster.combatant.maxHp);
+        const hpBack = this.add
+          .rectangle(
+            x,
+            y - (definition.boss ? 39 : 23),
+            32,
+            6,
+            VISUAL_TOKENS.colors.rockOutline,
+          )
+          .setOrigin(0.5);
+        const hp = this.add
+          .rectangle(
+            x - 15,
+            y - (definition.boss ? 39 : 23),
+            hpWidth,
+            4,
+            COLORS.red,
+          )
+          .setOrigin(0, 0.5);
+        this.tileObjects.push(hpBack, hp);
+      }
     }
   }
 
@@ -496,9 +741,9 @@ export class ExplorationScene extends Phaser.Scene {
     this.hudObjects.push(
       addHudBar(
         this,
-        82,
+        86,
         22,
-        132,
+        142,
         this.player.hp,
         this.player.maxHp,
         COLORS.red,
@@ -508,9 +753,9 @@ export class ExplorationScene extends Phaser.Scene {
     this.hudObjects.push(
       addHudBar(
         this,
-        82,
+        86,
         48,
-        132,
+        142,
         this.player.stamina,
         this.player.maxStamina,
         COLORS.green,
@@ -545,7 +790,12 @@ export class ExplorationScene extends Phaser.Scene {
         .setOrigin(0.5),
     );
     this.hudObjects.push(
-      addButton(this, 360, 104, 44, 44, "≡", () => this.openMenu()),
+      drawGameIcon(this, 178, 26, "coin", VISUAL_TOKENS.colors.coin).setScale(
+        0.7,
+      ),
+      drawGameIcon(this, 247, 26, "bag", 0xfff3d6).setScale(0.7),
+      drawGameIcon(this, 305, 58, "depth", 0xd3b98b).setScale(0.7),
+      addIconButton(this, 360, 104, "settings", () => this.openMenu()),
     );
   }
 
@@ -583,11 +833,17 @@ export class ExplorationScene extends Phaser.Scene {
       { x: 205, y: 804 },
       { x: 267, y: 804 },
     ] as const;
+    const actionIcons: Readonly<Record<ActionMode, GameIcon>> = {
+      mine: "pickaxe",
+      cool: "coolant",
+      disable: "disable",
+      potion: "potion",
+      bag: "bag",
+    };
     actions.forEach(([mode, label, count], index) => {
       const position = positions[index];
-      const fill = this.mode === mode ? COLORS.goldDark : COLORS.panelLight;
       this.hudObjects.push(
-        addButton(
+        addGameButton(
           this,
           position.x,
           position.y,
@@ -606,7 +862,11 @@ export class ExplorationScene extends Phaser.Scene {
                 : `${label}モード`;
             this.render();
           },
-          fill,
+          {
+            state: this.mode === mode ? "selected" : "normal",
+            icon: actionIcons[mode],
+            fontSize: 12,
+          },
         ),
       );
     });
@@ -620,6 +880,9 @@ export class ExplorationScene extends Phaser.Scene {
     const knob = this.add
       .circle(JOYSTICK_X, JOYSTICK_Y, 24, COLORS.panelLight, 1)
       .setStrokeStyle(2, COLORS.gold);
+    const arrow = this.add
+      .triangle(JOYSTICK_X, JOYSTICK_Y, 0, -8, 7, 6, -7, 6, COLORS.gold)
+      .setAlpha(0);
     const zone = this.add
       .zone(JOYSTICK_X, JOYSTICK_Y, JOYSTICK_RADIUS * 2, JOYSTICK_RADIUS * 2)
       .setInteractive();
@@ -637,7 +900,8 @@ export class ExplorationScene extends Phaser.Scene {
       },
     );
     this.joystickKnob = knob;
-    this.hudObjects.push(base, knob, zone);
+    this.joystickArrow = arrow;
+    this.hudObjects.push(base, knob, arrow, zone);
   }
 
   private readonly handleJoystickMove = (
@@ -657,6 +921,7 @@ export class ExplorationScene extends Phaser.Scene {
       this.heldDirection = undefined;
       this.queuedDirection = undefined;
       this.joystickKnob?.setPosition(JOYSTICK_X, JOYSTICK_Y);
+      this.joystickArrow?.setAlpha(0).setPosition(JOYSTICK_X, JOYSTICK_Y);
       return;
     }
     const scale = Math.min(distance, JOYSTICK_RADIUS - 8) / distance;
@@ -664,6 +929,10 @@ export class ExplorationScene extends Phaser.Scene {
       JOYSTICK_X + dx * scale,
       JOYSTICK_Y + dy * scale,
     );
+    this.joystickArrow
+      ?.setAlpha(0.9)
+      .setPosition(JOYSTICK_X + dx * scale * 0.7, JOYSTICK_Y + dy * scale * 0.7)
+      .setRotation(Math.atan2(dy, dx) + Math.PI / 2);
     const direction = directionFromAngle(
       Phaser.Math.RadToDeg(Math.atan2(dy, dx)),
     );
@@ -683,6 +952,7 @@ export class ExplorationScene extends Phaser.Scene {
     this.heldDirection = undefined;
     this.queuedDirection = undefined;
     this.joystickKnob?.setPosition(JOYSTICK_X, JOYSTICK_Y);
+    this.joystickArrow?.setAlpha(0).setPosition(JOYSTICK_X, JOYSTICK_Y);
     if (!this.moving) {
       this.render();
     }
@@ -702,6 +972,7 @@ export class ExplorationScene extends Phaser.Scene {
     if (!tile) {
       return;
     }
+    this.facing = facingFromMoveDirection(direction);
     this.startMoveTo(tile, direction);
   }
 
@@ -953,10 +1224,10 @@ export class ExplorationScene extends Phaser.Scene {
     if (cue === "hit") this.worldCamera.shake(110, 0.007);
     const x = tile
       ? BOARD_X + tile.x * TILE_SIZE + TILE_SIZE / 2
-      : this.player.x * TILE_SIZE + TILE_SIZE / 2;
+      : BOARD_X + this.player.x * TILE_SIZE + TILE_SIZE / 2;
     const y = tile
       ? BOARD_Y + tile.y * TILE_SIZE + TILE_SIZE / 2
-      : this.player.y * TILE_SIZE + TILE_SIZE / 2;
+      : BOARD_Y + this.player.y * TILE_SIZE + TILE_SIZE / 2;
     this.time.delayedCall(0, () => {
       const ring = this.add
         .circle(x, y, 8, color, 0.35)
@@ -969,6 +1240,28 @@ export class ExplorationScene extends Phaser.Scene {
         duration: 220,
         onComplete: () => ring.destroy(),
       });
+      const particleCount = cue === "hit" ? 10 : cue === "item" ? 4 : 6;
+      for (let index = 0; index < particleCount; index += 1) {
+        const angle = (Math.PI * 2 * index) / particleCount - Math.PI / 2;
+        const distance = cue === "item" ? 24 : 18 + (index % 3) * 4;
+        const size = cue === "hit" ? 4 + (index % 3) : 3;
+        const particle = this.add
+          .rectangle(x, y, size, size, color, 0.95)
+          .setRotation(angle + index * 0.4);
+        this.tileObjects.push(particle);
+        this.tweens.add({
+          targets: particle,
+          x: x + Math.cos(angle) * distance,
+          y:
+            y +
+            Math.sin(angle) * distance +
+            (cue === "mine" || cue === "hit" ? 10 : -6),
+          alpha: 0,
+          angle: 90 + index * 32,
+          duration: 140 + index * 10,
+          onComplete: () => particle.destroy(),
+        });
+      }
     });
   }
 
@@ -1025,36 +1318,6 @@ export class ExplorationScene extends Phaser.Scene {
     this.worldCamera.ignore(this.hudObjects);
   }
 
-  private getAreaGlow(): number {
-    const area = getArea(getSelectedAreaId());
-    if (area.theme === "crystalCave") {
-      return 0x3c92d8;
-    }
-    if (area.theme === "volcanoMine") {
-      return 0xe05a32;
-    }
-    if (area.theme === "ancientSite") {
-      return 0x9b59c9;
-    }
-    return 0xffb13b;
-  }
-
-  private getTileColor(tile: Tile): number {
-    if (tile.isRevealed) {
-      return 0x3a3024;
-    }
-    if (tile.state === "cooledMine") {
-      return 0x2d5f85;
-    }
-    if (tile.state === "disabledMine") {
-      return 0x6a5d3a;
-    }
-    if (tile.state === "exit") {
-      return 0x45351d;
-    }
-    return tile.hasMine ? 0x50463c : 0x5d5a55;
-  }
-
   private getTileVisual(tile: Tile): TileVisual {
     if (tile.state === "exit") {
       return "exit";
@@ -1089,4 +1352,11 @@ export class ExplorationScene extends Phaser.Scene {
       objects.pop()?.destroy();
     }
   }
+}
+
+function lightenColor(color: number, amount: number): number {
+  const red = Math.min(255, ((color >> 16) & 0xff) + amount);
+  const green = Math.min(255, ((color >> 8) & 0xff) + amount);
+  const blue = Math.min(255, (color & 0xff) + amount);
+  return (red << 16) | (green << 8) | blue;
 }
