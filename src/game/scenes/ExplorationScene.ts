@@ -959,7 +959,11 @@ export class ExplorationScene extends Phaser.Scene {
   };
 
   private startDirectionalMove(direction: MoveDirection): void {
-    if (this.moving || this.failed || this.cleared) {
+    if (this.failed || this.cleared) {
+      return;
+    }
+    this.facing = facingFromMoveDirection(direction);
+    if (this.moving) {
       this.queuedDirection = direction;
       return;
     }
@@ -972,7 +976,6 @@ export class ExplorationScene extends Phaser.Scene {
     if (!tile) {
       return;
     }
-    this.facing = facingFromMoveDirection(direction);
     this.startMoveTo(tile, direction);
   }
 
