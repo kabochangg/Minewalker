@@ -71,8 +71,6 @@ const JOYSTICK_X = 68;
 const JOYSTICK_Y = 770;
 const JOYSTICK_RADIUS = 58;
 const JOYSTICK_DEAD_ZONE = 8;
-const TILE_CROP_X = 6;
-const TILE_CROP_WIDTH = 20;
 
 export class ExplorationScene extends Phaser.Scene {
   private field!: Minefield;
@@ -276,23 +274,25 @@ export class ExplorationScene extends Phaser.Scene {
       const y = BOARD_Y + tile.y * TILE_SIZE;
       const visual = this.getTileVisual(tile);
       const key = getTileAssetKey(theme, visual);
-      const hitTarget = this.textures.exists(key)
-        ? this.add
-            .image(x, y, key)
-            .setOrigin(0)
-            .setCrop(TILE_CROP_X, 0, TILE_CROP_WIDTH, 32)
-            .setDisplaySize(TILE_SIZE, TILE_SIZE)
-        : this.add
-            .rectangle(
-              x,
-              y,
-              TILE_SIZE - 2,
-              TILE_SIZE - 2,
-              this.getTileColor(tile),
-              1,
-            )
-            .setOrigin(0)
-            .setStrokeStyle(1, 0x2d251c);
+      const hitTarget =
+        visual === "wall"
+          ? this.drawNaturalWallTile(x, y, tile)
+          : this.textures.exists(key)
+            ? this.add
+                .image(x, y, key)
+                .setOrigin(0)
+                .setDisplaySize(TILE_SIZE, TILE_SIZE)
+            : this.add
+                .rectangle(
+                  x,
+                  y,
+                  TILE_SIZE - 2,
+                  TILE_SIZE - 2,
+                  this.getTileColor(tile),
+                  1,
+                )
+                .setOrigin(0)
+                .setStrokeStyle(1, 0x2d251c);
       hitTarget.setInteractive({ useHandCursor: true });
       hitTarget.on("pointerup", (pointer: Phaser.Input.Pointer) => {
         if (pointer.getDuration() > 450) {
@@ -357,6 +357,31 @@ export class ExplorationScene extends Phaser.Scene {
         );
       }
     }
+  }
+
+  private drawNaturalWallTile(
+    x: number,
+    y: number,
+    tile: Tile,
+  ): Phaser.GameObjects.Rectangle {
+    const shades = [0x3b3026, 0x42352a, 0x49392c] as const;
+    const variant = Math.abs(tile.x * 7 + tile.y * 11) % shades.length;
+    const base = this.add
+      .rectangle(x, y, TILE_SIZE, TILE_SIZE, shades[variant])
+      .setOrigin(0)
+      .setStrokeStyle(1, 0x211913);
+    const stone = this.add.graphics();
+    stone.fillStyle(0x5a4636, 0.82);
+    stone.fillRoundedRect(x + 4, y + 5, 17, 11, 3);
+    stone.fillRoundedRect(x + 25, y + 4, 18, 14, 3);
+    stone.fillStyle(0x2e251e, 0.9);
+    stone.fillRoundedRect(x + 3, y + 22, 22, 17, 3);
+    stone.fillRoundedRect(x + 29, y + 24, 15, 14, 3);
+    stone.lineStyle(1, 0x6b5240, 0.65);
+    stone.strokeRoundedRect(x + 4, y + 5, 17, 11, 3);
+    stone.strokeRoundedRect(x + 25, y + 4, 18, 14, 3);
+    this.tileObjects.push(stone);
+    return base;
   }
 
   private drawPlayer(): void {
