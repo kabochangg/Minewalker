@@ -1,188 +1,71 @@
-# GAME_SPEC.md
+# Minewalker Game Specification
 
-## 1. ゲーム概要
-### タイトル
-Minewalker
+## 1. Core loop
 
-### ジャンル
-マインスイーパー着想の探索パズルゲーム
+Minewalker is a portrait mobile PWA that combines minesweeper deduction, mining, combat, collection, and base progression.
 
-### コアアイデア
-プレイヤーは、最初から一部が開いた安全な洞窟を探索しながら、数字を読み、正面の壁を壊し、地雷を避けて隠されたゴールへ向かう。
-目的は盤面全体の開示ではなく、**安全なルートを推理して前進すること**。
+1. Choose one of four mining areas.
+2. Select owned equipment and consumables.
+3. Read the eight-neighbor mine numbers and mine adjacent walls.
+4. Flag, cool, or disable suspected mines.
+5. Defeat monsters, collect materials, and reach the exit.
+6. Receive EXP and coins, then craft equipment and upgrade the base.
 
-## 2. MVP 範囲
-### 含めるもの
-- プレイヤーキャラクター
-- 下部操作パッドによる連続移動
-- 72 方向を基本とした移動入力と、5°刻みでの細かな向き補間
-- 正面判定ボックス内の壁やモンスターを自動攻撃するショット
-- 安全壁 / 地雷壁 / ゴール壁の判定
-- 周囲 8 マスの地雷数表示
-- 地雷位置から出現するモンスター
-- 隠しゴール
-- 勝利 / 敗北状態
-- モバイル縦画面前提の UI
-- ヘルプ表示とリスタート導線
+## 2. Board rules
 
-### 含めないもの
-- Ore
-- 回復アイテム
-- ピッケル強化
-- 敵の追加バリエーション
-- マルチプレイ
-- タイマー
-- flag モード
-- 複雑な RPG / ストーリー要素
+- The board is an 11 × 16 logical grid.
+- The start and its configured safe radius never contain mines.
+- Every revealed number equals the mine count in its surrounding eight cells.
+- Movement and interaction support all eight adjacent directions.
+- Diagonal movement is blocked when either orthogonal corner is blocked.
+- Unprocessed mines explode when mined. Cooled or disabled mines are safe and provide treated-mine drops.
+- The exit completes the run when interacted with from an adjacent cell.
 
-## 3. 盤面仕様
-### 基準サイズ
-- INTERMEDIATE: 操作領域拡張に合わせて従来 16 x 16 より行数を減らした縦画面向けサイズを採用する。
-- EXPERT: 操作領域拡張に合わせて従来 30 x 16 より行数を減らした縦画面向けサイズを採用する。
-- 地雷数は縮小後の総マス数に対して従来の密度感を大きく崩さない範囲で再調整する。
+## 3. Controls
 
-### 補足
-- 操作領域の縦拡張を優先し、そのぶんメイン盤面の表示行数と実グリッド行数を減らしてよい。
-- 基準密度を維持できる範囲で列数 / 行数の再調整は許容する。
-- 各マスは必ず正方形を維持する。
-- 盤面表示領域と実際のグリッド寸法は一致させる。
-- デフォルト難度は INTERMEDIATE とする。
+- Use the lower-left virtual joystick for continuous eight-direction movement.
+- Tap an adjacent wall or monster to interact with it.
+- Long-press an adjacent wall to toggle a flag.
+- Select mining, cooling, disabling, healing, or bag mode from the lower action bar.
+- The world camera follows the player; the HUD and action bar remain fixed.
 
-## 4. マスの種類
-- 壁: 未開封、通行不可、正面時のみ破壊可
-- 開いた床: 通行可、周囲地雷数を表示
-- 焼け跡: 地雷壁を叩いた結果として開く通行可マス
-- スタートマス: 初期安全地帯に含まれる開始位置
-- 隠しゴールマス: 初期状態では見えないゴール
-- 表示済みゴールマス: 開かれた後に表示されるゴール
+## 4. Exploration
 
-## 5. 数字ルール
-- 開いた床 / 焼け跡は周囲 8 マスの地雷数を数える。
-- 1 以上なら表示する。
-- 0 は空表示でよい。
-- ゴールマスには数字を表示しない。
-- 0 の自動展開を有効とする。
+- Player resources: HP, stamina, attack, defense, coins, and bag capacity.
+- Mining consumes stamina.
+- Monsters occupy grid cells and can be attacked from adjacent cells.
+- A defeated monster can drop an area-specific material.
+- A run succeeds at the exit and fails at 0 HP or when abandoned.
+- Active runs are saved separately from permanent progression and can be resumed.
 
-## 6. プレイヤー仕様
-### 向き
-- 移動入力は 72 方向を基本とし、プレイヤーの見た目の向きは 5°刻みで細かく補間する。
-- 移動できなくても向きは変わる。
-- 向き表示は盤面上で常に読み取れることを優先する。
-- プレイヤー表現は単純な矢印ではなく、向きが分かるプレイヤーらしい見た目にする。
+## 5. Meta progression
 
-### 移動
-- プレイヤーは開いている床 / 焼け跡 / 開示済みゴールの連続した空間を自由に移動できる。
-- 操作パッドは円周上の 72 方向入力を扱え、5°単位で移動方向を選べることを前提とする。
-- 未開封の壁マスは連続移動上の障害物として扱う。
-- プレイヤー当たり判定は 1 セルの約 60% 未満の円形ヒットボックスを基準に調整する。
-- 移動速度は 1 秒で約 2.75 セル分を目安とする。
-- 押しっぱなし移動に対応する。
-- パッド上のスライドで方向転換できることを前提とする。
+- Four areas: Beginner Mine, Crystal Cave, Volcano Mine, and Ancient Site.
+- Six monsters including Mine King as the boss.
+- 22 materials, 15 equipment definitions, and 10 recipes.
+- Equipment slots: pickaxe, weapon, and armor.
+- Upgrade tracks: base, player, weapon bench, and armor bench.
+- Versioned permanent save data uses v2 with v1 migration and backup recovery.
 
-### 叩く / 攻撃
-- プレイヤー正面に短い判定ボックスを設け、未開封マスまたはモンスターが入った時はその中から最も近い 1 つを攻撃対象にできる。
-- 弾は対象の有無にかかわらずプレイヤー正面へ自動発射し、対象がいる場合のみ命中時にダメージまたは壁破壊を発生させる。
-- 判定ボックスはプレイヤー前面から 0.75 セル先前後を基準に置く。
-- 判定ボックス内に複数対象がある場合は、最も近い 1 体 / 1 枚だけを対象にする。
-- 攻撃は入力不要で継続発射される。
-- 攻撃速度は 1.0 秒間隔とする。
-- 現在狙っている壁またはモンスターが分かる視覚フィードバックを持たせる。
+## 6. Screens
 
-## 7. 壁破壊結果
-### 安全壁
-- 開いた床になる。
-- 周囲地雷数を表示する。
-- 通行可能になる。
-- 0 の場合は隣接する安全領域を連鎖開示する。
+- BootScene
+- PreloadScene
+- TitleScene
+- HomeScene
+- AreaSelectScene
+- LoadoutScene
+- ExplorationScene
+- ResultScene
+- CraftingScene
+- InventoryScene
+- CollectionScene
+- SettingsScene
 
-### 地雷壁
-- 地雷位置のマスが開く。
-- その場にモンスターが 1 体出現する。
-- 出現マスは焼け跡として通行可能になる。
-- 出現マスにも周囲地雷数を表示する。
-- プレイヤーは前進せず元の位置に留まる。
+## 7. Release requirements
 
-### ゴール壁
-- 開いた時点でゴールを表示する。
-- そのマスへ侵入するとステージクリアになる。
-
-## 8. モンスター / 勝敗
-### モンスター
-- 地雷壁を叩いた時だけ出現する。
-- 単なる「M」文字ではなく、盤面上で識別しやすいモンスターらしい見た目にする。
-- マス単位ではなく連続移動でプレイヤーを追跡する。
-- 壁には衝突し、開いている経路を通って接近する。
-- 移動速度はプレイヤーより遅く、ステージ 1 の基準値は 1.32 cells/sec とする。
-- 次のステージへ進むたびに、モンスター移動速度を前ステージ比 3% ずつ上げる。
-- プレイヤーはモンスターを攻撃でき、弾を 2 発当てると 1 体を倒せる。
-- ステージが 5 進むごとに、モンスターの体力を 1 増やす。
-- ステージが 10 進むごとに、モンスターの見た目サイズと当たり判定サイズを 10% ずつ拡大する。
-- モンスター接触時はプレイヤーをヒットバックさせたうえでダメージを与える。
-
-### 勝敗
-- プレイヤーは 3 回被弾するとゲームオーバー。
-- プレイヤーがモンスターを倒す前に接触を重ねた場合も、累積 3 回で敗北とする。
-- ゴールを開示後、そのゴール領域にプレイヤーが入るとステージクリアになる。
-- ステージクリア後は次ステージの開始導線を表示し、プレイヤーが明示的に次へ進めるようにする。
-- 勝敗確定後は移動 / 叩き入力を受け付けない。
-
-## 9. 初期安全地帯
-- 1 つの連結領域であること。
-- 飛び地なし。
-- ランダムで不規則な形状であること。
-- 固定長方形にしないこと。
-- 面積目標は約 81 マス、許容範囲は 66〜96 マス。
-- 地雷を置かない。
-- スタート位置を含む。
-- 初手で最低限の探索判断ができる視認性を確保する。
-
-## 10. 地雷とゴール配置
-### 地雷
-- 初期安全地帯の外に置く。
-- 地雷数は基準サイズに応じて 40 / 99 を使う。
-- ゴールマスとは重複させない。
-
-### ゴール
-- 初期安全地帯の外に置く。
-- スタート近傍 18 x 18 相当の禁止領域外に置く。
-- 開かれるまで見えない。
-- 地雷とは重複しない。
-
-## 11. ステージ進行
-- ステージクリア時は盤面を更新し、次ステージへ進むためのボタンまたは同等の明確な導線を表示する。
-- 次ステージ開始時は、盤面・地雷・ゴール・モンスター配置を再生成する。
-- ステージ番号は 1 から始め、進行状況を HUD またはクリア演出内で把握できるようにする。
-- モンスター速度はステージが 1 進むごとに 3% 累積で上昇する。
-- モンスター体力は 5 ステージごとに +1 する。
-- モンスターサイズは 10 ステージごとに 10% 累積で拡大する。
-
-## 12. UI 方針
-### 上部 HUD
-- 左側に HP、右側に状態表示を置く。
-- `?` ボタンでヘルプを開けるようにする。
-- リスタート導線を常時確保する。
-- HUD の縦幅は圧縮し、盤面の可視領域を優先する。
-
-### メイン盤面
-- 盤面・プレイヤー・数字・モンスター・ゴールを主役にする。
-- 見やすさを最優先する。
-- 操作領域を広げたぶん、盤面表示領域と表示行数 / 実マス数を減らしてよい。
-- プレイヤー向きと叩き対象の視認性を落とさない。
-
-### 下部操作領域
-- 移動パッドと叩くボタンをまとめて配置する。
-- スマホ縦画面下部に従来より広い高さを確保する。
-- 多点タッチを阻害しない。
-- 移動パッドは中央配置とし、サイズは従来比 1.1 倍を目安に拡大する。
-- 操作領域全体の縦方向サイズは従来比 1.2 倍を目安に広げる。
-- 「叩く」ボタンは四角ではなく丸型を採用する。
-- 操作領域内の「操作エリア」というラベル文字は省略してよい。
-
-### ヘルプ
-- 常時表示せず `?` ボタンで表示する。
-- 内容は移動 / 向き / 叩く / 数字 / モンスター / ゴールを中心に短く整理する。
-
-## 13. ドキュメント運用メモ
-- 実装済みの挙動と食い違う記述を残さない。
-- 数値調整を更新した場合は、`USABILITY.md` と `EVALUATION_LOG.md` にも反映する。
-- 新機能の計画だけを先行して書く場合は、未実装であることを明記する。
+- Portrait layouts support widths from 320px through 430px.
+- Production build generates an installable manifest and offline service worker.
+- Unit tests cover board generation, mine handling, movement, combat, drops, progression, and save migration.
+- E2E covers the complete title-to-exploration flow and a full mining-to-result loop at three mobile widths.
+- No known progression-blocking defects may remain at release.

@@ -1,189 +1,30 @@
-# EVALUATION_LOG.md
+# Minewalker Evaluation Log
 
-## 1. 目的
-このファイルは、Minewalker の評価観点・評価結果・作業ログを 1 か所に集約して記録する。
-今後の検証追加もこのファイルへ追記する。
+## 2026-07-13 release-candidate work
 
-## 2. 共通評価観点
-### 仕様適合
-- MVP 範囲外の機能を追加していないか。
-- 盤面サイズ / 地雷数 / 安全地帯 / ゴール条件が仕様どおりか。
-- モンスター出現条件 / 追跡挙動 / 弾攻撃 / HP / ステージ進行 / 勝利 / 敗北条件が仕様どおりか。
-- ドキュメント同士で用語や数値が矛盾していないか。
+### Implemented
 
-### 操作性
-- モバイル縦画面で操作しやすいか。
-- 向き表示が見やすいか。
-- 長押し / 同時押し / スライド操作が安定するか。
-- 72 方向入力と 5°刻みの向き変化、中央配置パッド、拡張操作領域が片手操作で扱いやすいか。
-- 勝敗時の入力ロックが機能するか。
+- Confirmed the eight-direction joystick, diagonal corner blocking, monster occupancy checks, 48px display tiles, and following world camera.
+- Added owned-equipment switching on the loadout screen.
+- Added selectable recipe crafting and a paged bag-management screen.
+- Added protected important items and ordinary-item discard actions.
+- Added separately versioned interrupted-run save, backup, validation, resume, and clearing at ResultScene.
+- Added a deterministic E2E-only exploration scenario. It is excluded from normal production builds.
+- Added a complete E2E loop for wall mining, mine cooling, treated-mine mining, item gain, exit, result, and return home.
 
-### 技術品質
-- `npm run build` が成功するか。
-- 型エラーや配信上の問題がないか。
-- Cloudflare Pages 前提の構成を維持できているか。
+### Automated results
 
-## 3. 現在の実装サマリー
-### 盤面と生成
-- 盤面難度は INTERMEDIATE / EXPERT を持つ。
-- 初期安全地帯、地雷、隠しゴール、隣接地雷数を生成する。
-- ゴールはスタート近傍の禁止領域外へ配置する。
+- `npm run lint`: passed.
+- `npm run test`: 29 tests passed, including 1,800 consecutive seeded board validations as a 30-minute-equivalent soak.
+- `npm run build`: passed; manifest and service worker generated.
+- `npm run e2e`: 18 tests passed across 320px, 390px, and 428px mobile projects.
+- Offline production-shell reload: passed in Playwright.
+- `npm audit`: 0 vulnerabilities.
+- Lighthouse: Performance 64, Accessibility 100, Best Practices 100, SEO 91. Critical loading CSS, robots.txt, llms.txt, and source maps were added after this measurement.
 
-### プレイ挙動
-- プレイヤーは連続移動し、72 方向入力と 5°刻みの細かな向き変更に対応する想定である。
-- 攻撃は 0.7 秒間隔で、正面へ飛ばした弾が最も近い未開封 1 マスまたはモンスター 1 体へ当たる仕様を基準とする。
-- 地雷壁を叩くと焼け跡が開き、モンスターが 1 体出現する。
-- モンスターは連続移動でプレイヤーを追跡し、ステージ進行に応じて速度・HP・サイズが段階的に上がる仕様を基準とする。
-- ゴール開示後にそのマスへ侵入するとステージクリアとなり、次ステージへ進む導線を表示する。
+### Remaining release checks
 
-### UI
-- 上部 HUD に HP、状態表示、ヘルプ、リスタート導線を持つ。
-- 下部に移動パッドと叩くボタンを配置する。
-- 今後は中央配置パッド、拡張操作領域、丸型の叩くボタンを基準 UI とする。
-- 勝敗時はオーバーレイ表示と入力ロックを行う。
-
-## 4. ドキュメント整合メモ
-- `GAME_SPEC.md` は「何を実現するか」を記述する。
-- `USABILITY.md` は「どう操作しやすくするか」の基準を記述する。
-- このファイルは「何を確認し、どうだったか」の記録に限定する。
-- 未実装の計画を書く場合は、実行ログではなく別見出しで明示する。
-
-## 5. 実行ログ
-### 2026-03-18
-#### 実施内容
-- モンスター出現仕様へのドキュメント更新を実施。
-- 変更後の build を実施。
-
-#### 評価結果
-1. `npm run build`
-   - 成功
-
-#### 補足
-- 今回は仕様更新のみで、コード実装や画面アーティファクト更新は未実施。
-
-### 2026-03-20
-#### 実施内容
-- 地雷壁を叩いた時にモンスターが出現し、プレイヤーへ連続追跡する実装を追加。
-- プレイヤー移動速度を 2.75 cells/sec に微調整。
-- プレイヤー座標をセル中心基準へ統一し、壁へのめり込みと過剰な近接ブロックを同時に緩和。
-- 画面アーティファクトを更新し、モンスター表示を反映。
-
-#### 評価結果
-1. `npm run build`
-   - 成功
-   - Vite の chunk size 警告は出たが、ビルド自体は完了
-2. `npm run render:gamescreen`
-   - 成功
-   - `artifacts/game-screen.svg` を更新
-
-#### 補足
-- 自動評価では型エラー・ビルドエラーは再現せず解消済み。
-- 操作感の最終確認は実機ブラウザでの追試が望ましいが、今回の修正対象である座標系ずれと衝突半径はコード上で整合を取った。
-
-### 2026-03-22
-#### 実施内容
-- `GAME_SPEC.md`、`USABILITY.md`、`EVALUATION_LOG.md` の記述を再整理した。
-- 実装済みの操作パッド、ゴール壁、焼け跡、入力ロックに合わせて用語を統一した。
-- `EVALUATION_LOG.md` から古い実装計画を外し、現行の実装サマリーと記録ルールへ置き換えた。
-
-#### 評価結果
-1. `npm run build`
-   - 成功
-   - Vite の chunk size 警告は出たが、ビルド自体は完了
-
-#### 補足
-- 今回の変更対象はドキュメントのみ。
-- 実装コードや画面アーティファクトの更新は行っていない。
-
-### 2026-03-22 72方向入力仕様更新
-#### 実施内容
-- `GAME_SPEC.md` に、移動入力を 72 方向基準とし、見た目の向きを 5°刻みで補間する仕様を反映した。
-- `USABILITY.md` に、72 方向入力の操作要件・受け入れ基準・検証観点を反映した。
-- `EVALUATION_LOG.md` の評価観点と実装サマリーを今回の仕様更新に合わせて調整した。
-- 変更後の build を実施した。
-
-#### 評価結果
-1. `npm run build`
-   - 成功
-
-#### 補足
-- 今回の変更対象はドキュメントのみ。
-- 72 方向入力の実装追従と実機での操作感確認は今後のコード更新時に別途必要。
-
-### 2026-03-22 ステージ進行仕様更新
-#### 実施内容
-- `GAME_SPEC.md` に、0.7 秒攻撃間隔、弾を飛ばす攻撃、ステージ進行導線、モンスターの段階的強化ルールを追記した。
-- `USABILITY.md` に、弾攻撃の視認性、次ステージ導線、ステージ進行に伴うモンスター強化の受け入れ基準を追記した。
-- `EVALUATION_LOG.md` の評価観点と実装サマリーを今回の仕様更新に合わせて調整した。
-- 変更後の build を実施した。
-
-#### 評価結果
-1. `npm run build`
-   - 成功
-   - Vite の chunk size 警告は出たが、ビルド自体は完了
-
-#### 補足
-- 今回の変更対象はドキュメントのみ。
-- 弾の見た目、次ステージ導線、ステージ進行バランスは今後コード実装時に実機確認が必要。
-
-## 6. 今後の記録ルール
-- 新しい評価観点はまず「共通評価観点」に追記する。
-- 実施結果は日付単位で「実行ログ」に追記する。
-- 実装状況の要約は「現在の実装サマリー」を更新する。
-- ドキュメント修正だけの作業でも、build 実行有無を明記する。
-
-### 2026-03-22 操作UI再配置
-#### 実施内容
-- 下部操作領域で移動パッドを中央側へ再配置し、叩くボタンを右端基準へ寄せた。
-- 叩くボタンの横幅と文字サイズを縮小し、移動パッドとの同時押し余白を広げた。
-- `scripts/render-gamescreen.mjs` と `artifacts/game-screen.svg` を更新し、新しいゲーム画面の見た目を反映した。
-
-#### 評価結果
-1. `npm run build`
-   - 成功
-   - 型エラー / ビルドエラーなし
-   - Vite の chunk size 警告は継続するが、配信用ビルドは完了
-2. `npm run render:gamescreen`
-   - 成功
-   - `artifacts/game-screen.svg` を更新
-
-#### 補足
-- 自動評価では今回のレイアウト変更に伴う TypeScript エラーは再現せず解消済み。
-- 実機の親指到達性までは未検証のため、iPhone Safari での最終確認余地は残る。
-
-### 2026-03-22
-#### 実施内容
-- `GAME_SPEC.md` に、5°刻みの向き変更、中央配置かつ拡張された操作領域、丸型の叩くボタン、盤面縮小許容、プレイヤー / モンスターの見た目変更、モンスター戦闘と HP 仕様を追記した。
-- `USABILITY.md` に、操作パッド拡大、操作領域 1.2 倍、高頻度向き更新、0.5 秒攻撃間隔、2 発撃破 / 3 被弾、ヒットバックの受け入れ基準を追記した。
-- `EVALUATION_LOG.md` の評価観点と実装サマリーを今回の仕様更新に合わせて整理した。
-- 変更後の build を実施した。
-
-#### 評価結果
-1. `npm run build`
-   - 成功
-
-#### 補足
-- 今回の変更対象はドキュメントのみ。
-- 見た目変更や戦闘仕様は未実装のため、今後コード更新時に実機検証を追加する。
-
-### 2026-03-22 戦闘仕様と操作 UI 整合
-#### 実施内容
-- 下部操作 UI の「叩く」ボタンを丸型に変更し、仕様どおり移動パッドとの同時押し前提レイアウトへ調整した。
-- プレイヤー表示を矢印文字から、向きが読めるプレイヤー風マーカーへ変更した。
-- 地雷から出現するモンスター表示を文字 `M` からモンスター風マーカーへ変更した。
-- 正面攻撃でモンスターも対象に含め、2 発で撃破できるようにした。
-- モンスター接触時は即ゲームオーバーではなく、ヒットバック付きで HP を 1 減らし、3 被弾で敗北するよう修正した。
-- 修正途中で `currentAttackTarget` の型変更に伴う TypeScript エラーを再現し、解消後に再 build した。
-
-#### 評価結果
-1. `npm run build`
-   - 初回は `src/game/GameScene.ts` 内で `AttackTarget` に対して `x` / `y` を直接参照していたため失敗
-   - `target.position.x` / `target.position.y` への修正後に再実行し成功
-   - Vite の chunk size 警告は継続するが、配信用ビルドは完了
-2. `npm run render:gamescreen`
-   - 成功
-   - `artifacts/game-screen.svg` の再生成コマンドは正常終了
-
-#### 補足
-- 自動評価では、今回対象にした TypeScript エラーは解消済み。
-- 受け入れ基準のうち、片手操作の親指到達性と iPhone Safari 実機での視認性は未確認のため、最終確認は別途必要。
+- Visual QA after final asset integration.
+- PWA installation and real-device Safari/Chrome checks.
+- Physical-device touch, heat, and battery observation during an extended playthrough.
+- Cloudflare Pages production deployment and public URL verification.

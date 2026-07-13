@@ -7,7 +7,11 @@ import type { Minefield, Tile } from "../map/types";
 import { replaceTile } from "../map/types";
 import { addItem, type InventoryState } from "./InventorySystem";
 import { isAdjacent } from "./MinefieldSystem";
-import { MINE_DROPS, rollWeightedDropWithRandom, WALL_DROPS } from "./DropSystem";
+import {
+  MINE_DROPS,
+  rollWeightedDropWithRandom,
+  WALL_DROPS,
+} from "./DropSystem";
 
 export interface MiningResult {
   readonly field: Minefield;
@@ -25,22 +29,43 @@ export function mineTile(
   player: PlayerState,
   inventory: InventoryState,
   tile: Tile,
-  seedSuffix: string
+  seedSuffix: string,
 ): MiningResult {
   if (!isAdjacent(player, tile)) {
-    return { field, player, inventory, message: "隣の壁だけ採掘できます", mined: false, exploded: false };
+    return {
+      field,
+      player,
+      inventory,
+      message: "隣の壁だけ採掘できます",
+      mined: false,
+      exploded: false,
+    };
   }
   if (tile.isWalkable || tile.state === "blocked") {
-    return { field, player, inventory, message: "ここは採掘できません", mined: false, exploded: false };
+    return {
+      field,
+      player,
+      inventory,
+      message: "ここは採掘できません",
+      mined: false,
+      exploded: false,
+    };
   }
   if (player.stamina < BALANCE.mining.staminaCost) {
-    return { field, player, inventory, message: "スタミナが足りません", mined: false, exploded: false };
+    return {
+      field,
+      player,
+      inventory,
+      message: "スタミナが足りません",
+      mined: false,
+      exploded: false,
+    };
   }
 
   const nextPlayer = {
     ...player,
     stamina: player.stamina - BALANCE.mining.staminaCost,
-    actionState: "mining" as const
+    actionState: "mining" as const,
   };
   const nextDurability = Math.max(0, tile.durability - 1);
   if (nextDurability > 0) {
@@ -50,11 +75,15 @@ export function mineTile(
       inventory,
       message: "壁にひびが入りました",
       mined: true,
-      exploded: false
+      exploded: false,
     };
   }
 
-  if (tile.hasMine && tile.state !== "cooledMine" && tile.state !== "disabledMine") {
+  if (
+    tile.hasMine &&
+    tile.state !== "cooledMine" &&
+    tile.state !== "disabledMine"
+  ) {
     return {
       field: replaceTile(field, {
         ...tile,
@@ -62,19 +91,24 @@ export function mineTile(
         mark: "none",
         durability: 0,
         isWalkable: true,
-        isRevealed: true
+        isRevealed: true,
       }),
       player: damagePlayer(nextPlayer, BALANCE.mine.normalDamage),
       inventory,
       message: "未処理地雷が爆発しました",
       mined: true,
-      exploded: true
+      exploded: true,
     };
   }
 
-  const rng = createRandom(`${field.seed}:mine:${tile.x}:${tile.y}:${seedSuffix}`);
+  const rng = createRandom(
+    `${field.seed}:mine:${tile.x}:${tile.y}:${seedSuffix}`,
+  );
   const drops = tile.hasMine ? MINE_DROPS : WALL_DROPS;
-  const multiplier = tile.state === "cooledMine" || tile.state === "disabledMine" ? BALANCE.mine.treatedDropMultiplier : 1;
+  const multiplier =
+    tile.state === "cooledMine" || tile.state === "disabledMine"
+      ? BALANCE.mine.treatedDropMultiplier
+      : 1;
   const drop = rollWeightedDropWithRandom(drops, rng, multiplier);
   const revealedTile: Tile = {
     ...tile,
@@ -83,7 +117,7 @@ export function mineTile(
     durability: 0,
     itemId: drop?.itemId,
     isWalkable: true,
-    isRevealed: true
+    isRevealed: true,
   };
 
   if (!drop) {
@@ -93,19 +127,22 @@ export function mineTile(
       inventory,
       message: "通路が開きました",
       mined: true,
-      exploded: false
+      exploded: false,
     };
   }
 
   const addResult = addItem(inventory, drop.itemId, drop.amount);
   return {
-    field: replaceTile(field, { ...revealedTile, state: addResult.added ? "revealedFloor" : "item" }),
+    field: replaceTile(field, {
+      ...revealedTile,
+      state: addResult.added ? "revealedFloor" : "item",
+    }),
     player: nextPlayer,
     inventory: addResult.inventory,
     message: addResult.added ? "素材を手に入れました" : "バッグがいっぱいです",
     mined: true,
     exploded: false,
     gainedItemId: addResult.added ? drop.itemId : undefined,
-    gainedAmount: addResult.added ? drop.amount : undefined
+    gainedAmount: addResult.added ? drop.amount : undefined,
   };
 }

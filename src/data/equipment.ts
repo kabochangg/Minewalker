@@ -28,7 +28,7 @@ export const EQUIPMENT_DEFINITIONS = [
     miningPower: 1,
     attack: 0,
     defense: 0,
-    cost: { coins: 0, items: {} }
+    cost: { coins: 0, items: {} },
   },
   {
     id: "equipment.pickaxe.copper",
@@ -38,7 +38,7 @@ export const EQUIPMENT_DEFINITIONS = [
     miningPower: 2,
     attack: 0,
     defense: 0,
-    cost: { coins: 60, items: { "item.copperOre": 8, "item.stone": 4 } }
+    cost: { coins: 60, items: { "item.copperOre": 8, "item.stone": 4 } },
   },
   {
     id: "equipment.pickaxe.iron",
@@ -48,7 +48,7 @@ export const EQUIPMENT_DEFINITIONS = [
     miningPower: 3,
     attack: 1,
     defense: 0,
-    cost: { coins: 140, items: { "item.ironOre": 12, "item.coal": 4 } }
+    cost: { coins: 140, items: { "item.ironOre": 12, "item.coal": 4 } },
   },
   {
     id: "equipment.pickaxe.crystal",
@@ -58,7 +58,7 @@ export const EQUIPMENT_DEFINITIONS = [
     miningPower: 4,
     attack: 2,
     defense: 0,
-    cost: { coins: 280, items: { "item.silverOre": 8, "item.blueCrystal": 5 } }
+    cost: { coins: 280, items: { "item.silverOre": 8, "item.blueCrystal": 5 } },
   },
   {
     id: "equipment.pickaxe.ancient",
@@ -68,7 +68,10 @@ export const EQUIPMENT_DEFINITIONS = [
     miningPower: 6,
     attack: 3,
     defense: 1,
-    cost: { coins: 700, items: { "item.ancientCrystal": 4, "item.guardianGear": 2 } }
+    cost: {
+      coins: 700,
+      items: { "item.ancientCrystal": 4, "item.guardianGear": 2 },
+    },
   },
   {
     id: "equipment.weapon.dagger",
@@ -78,7 +81,7 @@ export const EQUIPMENT_DEFINITIONS = [
     miningPower: 0,
     attack: 4,
     defense: 0,
-    cost: { coins: 0, items: {} }
+    cost: { coins: 0, items: {} },
   },
   {
     id: "equipment.weapon.ironSword",
@@ -88,7 +91,7 @@ export const EQUIPMENT_DEFINITIONS = [
     miningPower: 0,
     attack: 8,
     defense: 0,
-    cost: { coins: 90, items: { "item.ironOre": 8, "item.coal": 3 } }
+    cost: { coins: 90, items: { "item.ironOre": 8, "item.coal": 3 } },
   },
   {
     id: "equipment.weapon.crystalSpear",
@@ -98,7 +101,7 @@ export const EQUIPMENT_DEFINITIONS = [
     miningPower: 0,
     attack: 12,
     defense: 1,
-    cost: { coins: 240, items: { "item.blueCrystal": 5, "item.silverOre": 8 } }
+    cost: { coins: 240, items: { "item.blueCrystal": 5, "item.silverOre": 8 } },
   },
   {
     id: "equipment.weapon.flameHammer",
@@ -108,7 +111,7 @@ export const EQUIPMENT_DEFINITIONS = [
     miningPower: 1,
     attack: 17,
     defense: 1,
-    cost: { coins: 480, items: { "item.redCrystal": 5, "item.flameGel": 4 } }
+    cost: { coins: 480, items: { "item.redCrystal": 5, "item.flameGel": 4 } },
   },
   {
     id: "equipment.weapon.relicBlade",
@@ -118,7 +121,10 @@ export const EQUIPMENT_DEFINITIONS = [
     miningPower: 1,
     attack: 24,
     defense: 2,
-    cost: { coins: 900, items: { "item.bossRelic": 1, "item.guardianGear": 3 } }
+    cost: {
+      coins: 900,
+      items: { "item.bossRelic": 1, "item.guardianGear": 3 },
+    },
   },
   {
     id: "equipment.armor.cloth",
@@ -128,7 +134,7 @@ export const EQUIPMENT_DEFINITIONS = [
     miningPower: 0,
     attack: 0,
     defense: 2,
-    cost: { coins: 0, items: {} }
+    cost: { coins: 0, items: {} },
   },
   {
     id: "equipment.armor.leather",
@@ -138,7 +144,7 @@ export const EQUIPMENT_DEFINITIONS = [
     miningPower: 0,
     attack: 0,
     defense: 5,
-    cost: { coins: 80, items: { "item.slimeCore": 4, "item.copperOre": 4 } }
+    cost: { coins: 80, items: { "item.slimeCore": 4, "item.copperOre": 4 } },
   },
   {
     id: "equipment.armor.iron",
@@ -148,7 +154,7 @@ export const EQUIPMENT_DEFINITIONS = [
     miningPower: 0,
     attack: 0,
     defense: 9,
-    cost: { coins: 220, items: { "item.ironOre": 10, "item.silverOre": 4 } }
+    cost: { coins: 220, items: { "item.ironOre": 10, "item.silverOre": 4 } },
   },
   {
     id: "equipment.armor.obsidian",
@@ -158,7 +164,7 @@ export const EQUIPMENT_DEFINITIONS = [
     miningPower: 0,
     attack: 1,
     defense: 14,
-    cost: { coins: 460, items: { "item.obsidian": 6, "item.golemShard": 4 } }
+    cost: { coins: 460, items: { "item.obsidian": 6, "item.golemShard": 4 } },
   },
   {
     id: "equipment.armor.guardian",
@@ -168,8 +174,11 @@ export const EQUIPMENT_DEFINITIONS = [
     miningPower: 1,
     attack: 2,
     defense: 21,
-    cost: { coins: 860, items: { "item.guardianGear": 4, "item.ancientCrystal": 3 } }
-  }
+    cost: {
+      coins: 860,
+      items: { "item.guardianGear": 4, "item.ancientCrystal": 3 },
+    },
+  },
 ] as const;
 
 export const EQUIPMENT: readonly EquipmentDefinition[] = EQUIPMENT_DEFINITIONS;
@@ -177,14 +186,17 @@ export const EQUIPMENT: readonly EquipmentDefinition[] = EQUIPMENT_DEFINITIONS;
 export const STARTER_EQUIPMENT_IDS = {
   pickaxe: "equipment.pickaxe.wood",
   weapon: "equipment.weapon.dagger",
-  armor: "equipment.armor.cloth"
+  armor: "equipment.armor.cloth",
 } as const satisfies Record<EquipmentSlot, EquipmentId>;
 
-const starterEquipmentIdList: readonly string[] = Object.values(STARTER_EQUIPMENT_IDS);
-
-export const STARTER_EQUIPMENT: readonly EquipmentDefinition[] = EQUIPMENT.filter((equipment) =>
-  starterEquipmentIdList.includes(equipment.id)
+const starterEquipmentIdList: readonly string[] = Object.values(
+  STARTER_EQUIPMENT_IDS,
 );
+
+export const STARTER_EQUIPMENT: readonly EquipmentDefinition[] =
+  EQUIPMENT.filter((equipment) =>
+    starterEquipmentIdList.includes(equipment.id),
+  );
 
 export function getEquipment(id: EquipmentId): EquipmentDefinition {
   const equipment = EQUIPMENT.find((candidate) => candidate.id === id);

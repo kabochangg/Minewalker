@@ -1,0 +1,8 @@
+# Minewalker
+
+Minewalker is a portrait PWA game combining minesweeper deduction, mining exploration, combat, crafting, and persistent base progression.
+
+## Public pages
+
+- `/`: Play Minewalker.
+- `/LEGAL.md`: Terms of use and privacy information in the source repository.

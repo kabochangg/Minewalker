@@ -23,7 +23,10 @@ export function canUnlockArea(state: SaveData, areaId: AreaId): boolean {
   );
 }
 
-export function getUpgradeCostLabel(state: SaveData, upgradeId: UpgradeId): string {
+export function getUpgradeCostLabel(
+  state: SaveData,
+  upgradeId: UpgradeId,
+): string {
   const upgrade = getUpgrade(upgradeId);
   const level = state.base.levels[upgradeId] ?? 1;
   if (level >= upgrade.maxLevel) {

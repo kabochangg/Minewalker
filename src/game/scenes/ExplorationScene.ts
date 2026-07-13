@@ -9,12 +9,14 @@ import {
 import { getArea } from "../../data/areas";
 import { getItemName } from "../../data/items";
 import { getMonster, type MonsterId } from "../../data/monsters";
+import { clearRun, loadRun, saveRun } from "../../save/RunSaveSystem";
 import { createInitialPlayer, type PlayerState } from "../entities/player";
 import type { Minefield, Tile } from "../map/types";
 import { getTile, replaceTile } from "../map/types";
 import { getEquippedStats, getGameState } from "../state/GameState";
 import { attackMonster, type CombatantState } from "../systems/CombatSystem";
 import { rollWeightedDrop } from "../systems/DropSystem";
+import { playFeedback, type FeedbackCue } from "../systems/FeedbackSystem";
 import {
   addItem,
   consumePotion,
@@ -27,9 +29,14 @@ import {
   disableMine,
   toggleFlag,
 } from "../systems/MineHandlingSystem";
-import { generateMinefield } from "../systems/MinefieldSystem";
+import { generateMinefield, isAdjacent } from "../systems/MinefieldSystem";
 import { mineTile } from "../systems/MiningSystem";
-import { tryMove } from "../systems/MovementSystem";
+import {
+  directionFromAngle,
+  MOVE_VECTORS,
+  tryMove,
+  type MoveDirection,
+} from "../systems/MovementSystem";
 import { addButton, addHudBar, COLORS, drawPixelMiner } from "./uiHelpers";
 
 type ActionMode = "mine" | "cool" | "disable" | "potion" | "bag";
@@ -41,9 +48,28 @@ interface MonsterRuntime {
   readonly combatant: CombatantState;
 }
 
-const TILE_SIZE = 32;
-const BOARD_X = 19;
-const BOARD_Y = 138;
+interface ExplorationE2EBridge {
+  readonly mineWall: () => void;
+  readonly coolMine: () => void;
+  readonly mineTreatedMine: () => void;
+  readonly reachExit: () => void;
+  readonly snapshot: () => {
+    readonly usedCapacity: number;
+    readonly cleared: boolean;
+    readonly message: string;
+  };
+}
+
+const TILE_SIZE = 48;
+const BOARD_X = 0;
+const BOARD_Y = 0;
+const WORLD_TOP = 112;
+const WORLD_HEIGHT = 538;
+const MOVE_DURATION = 135;
+const JOYSTICK_X = 68;
+const JOYSTICK_Y = 770;
+const JOYSTICK_RADIUS = 58;
+const JOYSTICK_DEAD_ZONE = 14;
 
 export class ExplorationScene extends Phaser.Scene {
   private field!: Minefield;
@@ -57,6 +83,17 @@ export class ExplorationScene extends Phaser.Scene {
   private cleared = false;
   private failed = false;
   private resultQueued = false;
+  private worldCamera!: Phaser.Cameras.Scene2D.Camera;
+  private uiCamera!: Phaser.Cameras.Scene2D.Camera;
+  private playerSprite?: Phaser.GameObjects.GameObject & {
+    x: number;
+    y: number;
+  };
+  private joystickKnob?: Phaser.GameObjects.Arc;
+  private joystickPointerId?: number;
+  private heldDirection?: MoveDirection;
+  private queuedDirection?: MoveDirection;
+  private moving = false;
   private readonly tileObjects: Phaser.GameObjects.GameObject[] = [];
   private readonly hudObjects: Phaser.GameObjects.GameObject[] = [];
 
@@ -65,11 +102,36 @@ export class ExplorationScene extends Phaser.Scene {
   }
 
   create(): void {
-    this.cameras.main.setBackgroundColor("#0b0f12");
-    this.field = this.createScenarioField();
-    this.player = this.createPlayer();
-    this.inventory = this.createRunInventory();
-    this.monsters = this.createMonsters();
+    this.worldCamera = this.cameras.main;
+    this.worldCamera.setViewport(0, WORLD_TOP, 390, WORLD_HEIGHT);
+    this.worldCamera.setZoom(1.1);
+    this.worldCamera.setBackgroundColor("#0b0f12");
+    this.uiCamera = this.cameras.add(0, 0, 390, 844, false, "ui");
+    this.uiCamera.transparent = true;
+    const resumed = loadRun();
+    if (resumed?.areaId === getSelectedAreaId()) {
+      this.field = resumed.field;
+      this.player = resumed.player;
+      this.inventory = resumed.inventory;
+      this.monsters = [...resumed.monsters];
+      this.defeatedMonsters = [...resumed.defeatedMonsters];
+      this.bossDefeated = resumed.bossDefeated;
+      this.message = "中断した探索を再開しました";
+    } else {
+      this.field = this.createScenarioField();
+      this.player = this.createPlayer();
+      this.inventory = this.createRunInventory();
+      this.monsters = this.createMonsters();
+    }
+    if (
+      import.meta.env.VITE_E2E === "1" &&
+      new URLSearchParams(window.location.search).has("e2e")
+    ) {
+      this.prepareE2EScenario();
+    }
+    this.input.on("pointermove", this.handleJoystickMove, this);
+    this.input.on("pointerup", this.releaseJoystick, this);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.shutdownInput, this);
     this.render();
   }
 
@@ -160,8 +222,14 @@ export class ExplorationScene extends Phaser.Scene {
     this.drawHud();
     this.drawMessage();
     this.drawActions();
+    this.worldCamera.ignore(this.hudObjects);
+    this.uiCamera.ignore(this.tileObjects);
+    if (!this.cleared && !this.failed) {
+      this.saveRunState();
+    }
     if ((this.cleared || this.failed) && !this.resultQueued) {
       this.resultQueued = true;
+      clearRun();
       this.time.delayedCall(600, () => {
         this.scene.start("ResultScene", {
           success: this.cleared,
@@ -178,11 +246,21 @@ export class ExplorationScene extends Phaser.Scene {
     const graphics = this.add.graphics();
     this.tileObjects.push(graphics);
     graphics.fillStyle(0x11100d);
-    graphics.fillRect(0, 0, 390, 844);
+    graphics.fillRect(
+      0,
+      0,
+      this.field.width * TILE_SIZE,
+      this.field.height * TILE_SIZE,
+    );
     graphics.fillStyle(0x19140f);
-    graphics.fillRect(0, 112, 390, 604);
+    graphics.fillRect(
+      0,
+      0,
+      this.field.width * TILE_SIZE,
+      this.field.height * TILE_SIZE,
+    );
     graphics.fillStyle(this.getAreaGlow(), 0.13);
-    graphics.fillCircle(132, 330, 130);
+    graphics.fillCircle(264, 330, 180);
   }
 
   private drawTiles(): void {
@@ -214,7 +292,7 @@ export class ExplorationScene extends Phaser.Scene {
           this.handleFlag(tile);
           return;
         }
-        this.handleTileTap(tile);
+        this.handleTileInteraction(tile);
       });
       this.tileObjects.push(hitTarget);
 
@@ -278,12 +356,75 @@ export class ExplorationScene extends Phaser.Scene {
     const x = BOARD_X + this.player.x * TILE_SIZE + TILE_SIZE / 2;
     const y = BOARD_Y + this.player.y * TILE_SIZE + TILE_SIZE / 2;
     if (this.textures.exists(ASSET_KEYS.player)) {
-      this.tileObjects.push(
-        this.add.image(x, y, ASSET_KEYS.player).setDisplaySize(44, 44),
-      );
+      const sprite = this.add
+        .image(x, y, ASSET_KEYS.player)
+        .setDisplaySize(58, 58);
+      this.playerSprite = sprite;
+      this.tileObjects.push(sprite);
+      this.followPlayer(sprite);
       return;
     }
-    this.tileObjects.push(drawPixelMiner(this, x, y).setScale(0.95));
+    const sprite = drawPixelMiner(this, x, y).setScale(1.25);
+    this.playerSprite = sprite;
+    this.tileObjects.push(sprite);
+    this.followPlayer(sprite);
+  }
+
+  private prepareE2EScenario(): void {
+    const safe = getTile(this.field, this.player.x, this.player.y + 1);
+    const mine = getTile(this.field, this.player.x + 1, this.player.y);
+    const exit = getTile(this.field, this.player.x - 1, this.player.y);
+    if (!safe || !mine || !exit) return;
+    this.field = replaceTile(this.field, {
+      ...safe,
+      state: "hiddenWall",
+      hasMine: false,
+      mark: "none",
+      durability: 1,
+      isWalkable: false,
+      isRevealed: false,
+    });
+    this.field = replaceTile(this.field, {
+      ...mine,
+      state: "mineWall",
+      hasMine: true,
+      mark: "none",
+      durability: 1,
+      isWalkable: false,
+      isRevealed: false,
+    });
+    this.field = replaceTile(this.field, {
+      ...exit,
+      state: "exit",
+      hasMine: false,
+      mark: "none",
+      durability: 1,
+      isWalkable: false,
+      isRevealed: false,
+    });
+    this.monsters = [];
+    const browserWindow = window as typeof window & {
+      __minewalkerE2E?: ExplorationE2EBridge;
+    };
+    const currentTile = (tile: Tile): Tile =>
+      getTile(this.field, tile.x, tile.y) ?? tile;
+    browserWindow.__minewalkerE2E = {
+      mineWall: () => this.handleTileInteraction(currentTile(safe)),
+      coolMine: () => {
+        this.mode = "cool";
+        this.handleTileInteraction(currentTile(mine));
+      },
+      mineTreatedMine: () => {
+        this.mode = "mine";
+        this.handleTileInteraction(currentTile(mine));
+      },
+      reachExit: () => this.handleTileInteraction(currentTile(exit)),
+      snapshot: () => ({
+        usedCapacity: getUsedCapacity(this.inventory),
+        cleared: this.cleared,
+        message: this.message,
+      }),
+    };
   }
 
   private drawMonsters(): void {
@@ -400,16 +541,23 @@ export class ExplorationScene extends Phaser.Scene {
         `${getUsedCapacity(this.inventory)}/${this.inventory.capacity}`,
       ],
     ];
+    const positions = [
+      { x: 174, y: 744 },
+      { x: 236, y: 744 },
+      { x: 298, y: 744 },
+      { x: 205, y: 804 },
+      { x: 267, y: 804 },
+    ] as const;
     actions.forEach(([mode, label, count], index) => {
-      const x = 43 + index * 76;
+      const position = positions[index];
       const fill = this.mode === mode ? COLORS.goldDark : COLORS.panelLight;
       this.hudObjects.push(
         addButton(
           this,
-          x,
-          772,
-          66,
-          82,
+          position.x,
+          position.y,
+          56,
+          52,
           `${label}\n${count}`,
           () => {
             this.mode = mode;
@@ -427,13 +575,186 @@ export class ExplorationScene extends Phaser.Scene {
         ),
       );
     });
+    this.drawJoystick();
   }
 
-  private handleTileTap(tile: Tile): void {
-    if (this.failed || this.cleared) {
+  private drawJoystick(): void {
+    const base = this.add
+      .circle(JOYSTICK_X, JOYSTICK_Y, JOYSTICK_RADIUS, 0x201a14, 0.94)
+      .setStrokeStyle(3, COLORS.goldDark);
+    const knob = this.add
+      .circle(JOYSTICK_X, JOYSTICK_Y, 24, COLORS.panelLight, 1)
+      .setStrokeStyle(2, COLORS.gold);
+    const zone = this.add
+      .zone(JOYSTICK_X, JOYSTICK_Y, JOYSTICK_RADIUS * 2, JOYSTICK_RADIUS * 2)
+      .setInteractive();
+    zone.on(
+      "pointerdown",
+      (
+        pointer: Phaser.Input.Pointer,
+        _localX: number,
+        _localY: number,
+        event: Phaser.Types.Input.EventData,
+      ) => {
+        event.stopPropagation();
+        this.joystickPointerId = pointer.id;
+        this.updateJoystick(pointer);
+      },
+    );
+    this.joystickKnob = knob;
+    this.hudObjects.push(base, knob, zone);
+  }
+
+  private readonly handleJoystickMove = (
+    pointer: Phaser.Input.Pointer,
+  ): void => {
+    if (pointer.id !== this.joystickPointerId || !pointer.isDown) {
       return;
     }
+    this.updateJoystick(pointer);
+  };
+
+  private updateJoystick(pointer: Phaser.Input.Pointer): void {
+    const dx = pointer.x - JOYSTICK_X;
+    const dy = pointer.y - JOYSTICK_Y;
+    const distance = Math.hypot(dx, dy);
+    if (distance < JOYSTICK_DEAD_ZONE) {
+      this.heldDirection = undefined;
+      this.queuedDirection = undefined;
+      this.joystickKnob?.setPosition(JOYSTICK_X, JOYSTICK_Y);
+      return;
+    }
+    const scale = Math.min(distance, JOYSTICK_RADIUS - 8) / distance;
+    this.joystickKnob?.setPosition(
+      JOYSTICK_X + dx * scale,
+      JOYSTICK_Y + dy * scale,
+    );
+    const direction = directionFromAngle(
+      Phaser.Math.RadToDeg(Math.atan2(dy, dx)),
+    );
+    this.heldDirection = direction;
+    if (this.moving) {
+      this.queuedDirection = direction;
+      return;
+    }
+    this.startDirectionalMove(direction);
+  }
+
+  private readonly releaseJoystick = (pointer: Phaser.Input.Pointer): void => {
+    if (pointer.id !== this.joystickPointerId) {
+      return;
+    }
+    this.joystickPointerId = undefined;
+    this.heldDirection = undefined;
+    this.queuedDirection = undefined;
+    this.joystickKnob?.setPosition(JOYSTICK_X, JOYSTICK_Y);
+    if (!this.moving) {
+      this.render();
+    }
+  };
+
+  private startDirectionalMove(direction: MoveDirection): void {
+    if (this.moving || this.failed || this.cleared) {
+      this.queuedDirection = direction;
+      return;
+    }
+    const vector = MOVE_VECTORS[direction];
+    const tile = getTile(
+      this.field,
+      this.player.x + vector.x,
+      this.player.y + vector.y,
+    );
+    if (!tile) {
+      return;
+    }
+    this.startMoveTo(tile, direction);
+  }
+
+  private startMoveTo(tile: Tile, direction?: MoveDirection): void {
+    if (this.moving) {
+      if (direction) this.queuedDirection = direction;
+      return;
+    }
+    const previous = this.player;
+    const occupied = this.monsters.map((monster) => ({
+      x: monster.tileX,
+      y: monster.tileY,
+    }));
+    const next = tryMove(this.field, this.player, tile, occupied);
+    if (next.x === previous.x && next.y === previous.y) {
+      return;
+    }
+    this.player = { ...next, depth: Math.max(next.depth, tile.y) };
+    this.message = "移動しました";
+    this.moving = true;
+    const diagonal = previous.x !== next.x && previous.y !== next.y;
+    const duration = diagonal
+      ? Math.round(MOVE_DURATION * Math.SQRT2)
+      : MOVE_DURATION;
+    const targetX = BOARD_X + next.x * TILE_SIZE + TILE_SIZE / 2;
+    const targetY = BOARD_Y + next.y * TILE_SIZE + TILE_SIZE / 2;
+    if (!this.playerSprite) {
+      this.moving = false;
+      this.render();
+      return;
+    }
+    this.tweens.add({
+      targets: this.playerSprite,
+      x: targetX,
+      y: targetY,
+      duration,
+      ease: "Linear",
+      onComplete: () => {
+        this.moving = false;
+        const nextDirection = this.queuedDirection ?? this.heldDirection;
+        this.queuedDirection = undefined;
+        if (nextDirection && this.heldDirection) {
+          this.startDirectionalMove(nextDirection);
+          return;
+        }
+        this.render();
+      },
+    });
+  }
+
+  private followPlayer(
+    sprite: Phaser.GameObjects.GameObject & { x: number; y: number },
+  ): void {
+    this.worldCamera.setBounds(
+      0,
+      0,
+      this.field.width * TILE_SIZE,
+      this.field.height * TILE_SIZE,
+    );
+    this.worldCamera.startFollow(sprite, true, 0.16, 0.16);
+  }
+
+  private shutdownInput(): void {
+    this.input.off("pointermove", this.handleJoystickMove, this);
+    this.input.off("pointerup", this.releaseJoystick, this);
+    this.worldCamera.stopFollow();
+  }
+
+  private saveRunState(): void {
+    saveRun({
+      areaId: getSelectedAreaId(),
+      field: this.field,
+      player: this.player,
+      inventory: this.inventory,
+      monsters: this.monsters,
+      defeatedMonsters: this.defeatedMonsters,
+      bossDefeated: this.bossDefeated,
+    });
+  }
+
+  private handleTileInteraction(tile: Tile): void {
+    if (this.failed || this.cleared || this.moving) return;
     if (this.tryAttackMonster(tile)) {
+      this.render();
+      return;
+    }
+    if (!isAdjacent(this.player, tile)) {
+      this.message = "隣接するマスを選んでください";
       this.render();
       return;
     }
@@ -442,6 +763,7 @@ export class ExplorationScene extends Phaser.Scene {
       this.field = result.field;
       this.inventory = result.inventory;
       this.message = result.message;
+      if (result.success) this.feedback("cool", tile, 0x66ccff);
       this.render();
       return;
     }
@@ -450,29 +772,17 @@ export class ExplorationScene extends Phaser.Scene {
       this.field = result.field;
       this.inventory = result.inventory;
       this.message = result.message;
+      if (result.success) this.feedback("disable", tile, 0xffd65a);
       this.render();
       return;
     }
     if (tile.isWalkable) {
-      const next = tryMove(this.player, tile);
-      this.player = { ...next, depth: Math.max(next.depth, tile.y) };
-      this.message =
-        this.player.x === tile.x && this.player.y === tile.y
-          ? "移動しました"
-          : "隣の床へ移動できます";
-      this.render();
+      this.startMoveTo(tile);
       return;
     }
     if (tile.state === "exit") {
-      if (
-        Math.abs(this.player.x - tile.x) + Math.abs(this.player.y - tile.y) ===
-        1
-      ) {
-        this.cleared = true;
-        this.message = "出口に到達しました";
-      } else {
-        this.message = "出口へ近づこう";
-      }
+      this.cleared = true;
+      this.message = "出口に到達しました";
       this.render();
       return;
     }
@@ -481,7 +791,7 @@ export class ExplorationScene extends Phaser.Scene {
       this.player,
       this.inventory,
       tile,
-      String(Date.now()),
+      import.meta.env.VITE_E2E === "1" ? "e2e" : String(Date.now()),
     );
     this.field = result.field;
     this.player = {
@@ -492,14 +802,21 @@ export class ExplorationScene extends Phaser.Scene {
     this.message = result.gainedItemId
       ? `${getItemName(result.gainedItemId)} x${result.gainedAmount}を入手`
       : result.message;
-    if (this.player.hp <= 0) {
-      this.failed = true;
-      this.message = "探索失敗...";
-    }
+    this.feedback(
+      result.exploded ? "hit" : result.gainedItemId ? "item" : "mine",
+      tile,
+      result.exploded ? 0xff5533 : 0xf3bb55,
+    );
+    if (this.player.hp <= 0) this.failed = true;
     this.render();
   }
 
   private handleFlag(tile: Tile): void {
+    if (!isAdjacent(this.player, tile)) {
+      this.message = "隣接するマスだけフラグを操作できます";
+      this.render();
+      return;
+    }
     this.field = toggleFlag(this.field, tile);
     this.message =
       tile.mark === "flag" ? "フラグを外しました" : "地雷候補にマークしました";
@@ -513,10 +830,7 @@ export class ExplorationScene extends Phaser.Scene {
     if (!monster) {
       return false;
     }
-    if (
-      Math.abs(this.player.x - tile.x) + Math.abs(this.player.y - tile.y) !==
-      1
-    ) {
+    if (!isAdjacent(this.player, tile)) {
       this.message = "敵へ近づこう";
       return true;
     }
@@ -538,6 +852,7 @@ export class ExplorationScene extends Phaser.Scene {
           ? `${getItemName(drop.itemId)} x${drop.amount}を入手`
           : "バッグがいっぱいです";
       }
+      this.feedback("item", tile, 0xf5d76e);
       this.monsters = this.monsters.filter(
         (candidate) => candidate !== monster,
       );
@@ -585,10 +900,40 @@ export class ExplorationScene extends Phaser.Scene {
       actionState: "usingItem",
     };
     this.message = "HPを回復しました";
+    this.feedback("heal", undefined, 0x68d391);
     this.render();
   }
 
+  private feedback(cue: FeedbackCue, tile?: Tile, color = 0xffffff): void {
+    const settings = getGameState().settings;
+    playFeedback(cue, settings.sound, settings.vibration);
+    if (settings.reducedMotion) return;
+    if (cue === "hit") this.worldCamera.shake(110, 0.007);
+    const x = tile
+      ? BOARD_X + tile.x * TILE_SIZE + TILE_SIZE / 2
+      : this.player.x * TILE_SIZE + TILE_SIZE / 2;
+    const y = tile
+      ? BOARD_Y + tile.y * TILE_SIZE + TILE_SIZE / 2
+      : this.player.y * TILE_SIZE + TILE_SIZE / 2;
+    this.time.delayedCall(0, () => {
+      const ring = this.add
+        .circle(x, y, 8, color, 0.35)
+        .setStrokeStyle(3, color, 0.9);
+      this.tileObjects.push(ring);
+      this.tweens.add({
+        targets: ring,
+        scale: 2.6,
+        alpha: 0,
+        duration: 220,
+        onComplete: () => ring.destroy(),
+      });
+    });
+  }
+
   private openMenu(): void {
+    this.heldDirection = undefined;
+    this.queuedDirection = undefined;
+    this.joystickPointerId = undefined;
     this.clearObjects(this.hudObjects);
     this.drawHud();
     const overlay = this.add.rectangle(195, 422, 390, 844, 0x000000, 0.58);
@@ -635,6 +980,7 @@ export class ExplorationScene extends Phaser.Scene {
         this.render();
       }),
     );
+    this.worldCamera.ignore(this.hudObjects);
   }
 
   private getAreaGlow(): number {

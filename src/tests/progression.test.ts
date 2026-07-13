@@ -2,9 +2,20 @@ import { describe, expect, it } from "vitest";
 import { RECIPES } from "../data/recipes";
 import { createSaveData } from "../save/SaveSystem";
 import { craftRecipe } from "../game/systems/CraftingSystem";
-import { addItem, createInitialInventory, getUsedCapacity } from "../game/systems/InventorySystem";
+import {
+  addItem,
+  createInitialInventory,
+  getUsedCapacity,
+} from "../game/systems/InventorySystem";
 import { canUnlockArea } from "../game/systems/ProgressionSystem";
-import { applyExplorationReward, getEquippedStats, resetGameStateForTests, tryUpgrade } from "../game/state/GameState";
+import {
+  applyExplorationReward,
+  discardItem,
+  equipItem,
+  getEquippedStats,
+  resetGameStateForTests,
+  tryUpgrade,
+} from "../game/state/GameState";
 
 describe("progression systems", () => {
   it("enforces bag capacity", () => {
@@ -19,7 +30,9 @@ describe("progression systems", () => {
 
   it("crafts consumables from recipe costs", () => {
     const initial = createSaveData();
-    const recipe = RECIPES.find((candidate) => candidate.id === "recipe.coolant.basic");
+    const recipe = RECIPES.find(
+      (candidate) => candidate.id === "recipe.coolant.basic",
+    );
     if (!recipe) {
       throw new Error("Expected coolant recipe");
     }
@@ -28,14 +41,20 @@ describe("progression systems", () => {
       player: { ...initial.player, coins: 100 },
       inventory: {
         ...initial.inventory,
-        items: { ...initial.inventory.items, "item.coolantGel": 2, "item.coal": 2 }
-      }
+        items: {
+          ...initial.inventory.items,
+          "item.coolantGel": 2,
+          "item.coal": 2,
+        },
+      },
     };
 
     const result = craftRecipe(state, recipe);
 
     expect(result.crafted).toBe(true);
-    expect(result.state.inventory.coolants).toBe(initial.inventory.coolants + 2);
+    expect(result.state.inventory.coolants).toBe(
+      initial.inventory.coolants + 2,
+    );
   });
 
   it("upgrades base levels when costs are paid", () => {
@@ -45,8 +64,12 @@ describe("progression systems", () => {
       player: { ...initial.player, coins: 100 },
       inventory: {
         ...initial.inventory,
-        items: { ...initial.inventory.items, "item.stone": 8, "item.ironOre": 6 }
-      }
+        items: {
+          ...initial.inventory.items,
+          "item.stone": 8,
+          "item.ironOre": 6,
+        },
+      },
     });
 
     const result = tryUpgrade("upgrade.base");
@@ -63,8 +86,12 @@ describe("progression systems", () => {
       base: { levels: { ...initial.base.levels, "upgrade.base": 2 } },
       inventory: {
         ...initial.inventory,
-        items: { ...initial.inventory.items, "item.ironOre": 8, "item.blueCrystal": 2 }
-      }
+        items: {
+          ...initial.inventory.items,
+          "item.ironOre": 8,
+          "item.blueCrystal": 2,
+        },
+      },
     };
 
     expect(canUnlockArea(state, "area.crystalCave")).toBe(true);
@@ -79,7 +106,7 @@ describe("progression systems", () => {
       coolants: 1,
       disablers: 1,
       potions: 1,
-      maps: 0
+      maps: 0,
     };
 
     const state = applyExplorationReward({
@@ -87,11 +114,43 @@ describe("progression systems", () => {
       depth: 50,
       inventory: rewardInventory,
       defeatedMonsters: ["monster.mineKing"],
-      bossDefeated: true
+      bossDefeated: true,
     });
 
     expect(getEquippedStats(state).attack).toBeGreaterThan(0);
     expect(state.statistics.bossDefeated).toBe(true);
     expect(state.collection.items).toContain("item.bossRelic");
+  });
+
+  it("equips owned equipment and rejects unowned equipment", () => {
+    const initial = createSaveData();
+    resetGameStateForTests({
+      ...initial,
+      equipment: {
+        ...initial.equipment,
+        owned: [...initial.equipment.owned, "equipment.weapon.ironSword"],
+      },
+    });
+
+    expect(equipItem("equipment.weapon.ironSword").ok).toBe(true);
+    expect(equipItem("equipment.weapon.relicBlade").ok).toBe(false);
+  });
+
+  it("discards ordinary materials but protects important relics", () => {
+    const initial = createSaveData();
+    resetGameStateForTests({
+      ...initial,
+      inventory: {
+        ...initial.inventory,
+        items: {
+          ...initial.inventory.items,
+          "item.stone": 2,
+          "item.bossRelic": 1,
+        },
+      },
+    });
+
+    expect(discardItem("item.stone").ok).toBe(true);
+    expect(discardItem("item.bossRelic").ok).toBe(false);
   });
 });

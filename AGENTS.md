@@ -297,21 +297,26 @@ canvas {
 
 ```md
 ## 実装内容
+
 - ...
 
 ## 変更ファイル
+
 - ...
 
 ## 動作確認
+
 - npm run lint
 - npm run test
 - npm run build
 - npm run e2e
 
 ## 未完了
+
 - ...
 
 ## 次に行うこと
+
 - ...
 ```
 

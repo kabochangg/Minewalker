@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { generateMinefield, validateMinefield } from "../game/systems/MinefieldSystem";
+import {
+  generateMinefield,
+  validateMinefield,
+} from "../game/systems/MinefieldSystem";
 import { getTile } from "../game/map/types";
 
 describe("generateMinefield", () => {
@@ -11,11 +14,13 @@ describe("generateMinefield", () => {
       safeRadius: 1,
       seed: "zero",
       startX: 1,
-      startY: 1
+      startY: 1,
     });
 
     expect(field.tiles.every((tile) => !tile.hasMine)).toBe(true);
-    expect(field.tiles.every((tile) => tile.adjacentMineCount === 0)).toBe(true);
+    expect(field.tiles.every((tile) => tile.adjacentMineCount === 0)).toBe(
+      true,
+    );
   });
 
   it("keeps the start area safe", () => {
@@ -26,7 +31,7 @@ describe("generateMinefield", () => {
       safeRadius: 1,
       seed: "safe",
       startX: 4,
-      startY: 4
+      startY: 4,
     });
 
     for (let y = 3; y <= 5; y += 1) {
@@ -44,15 +49,17 @@ describe("generateMinefield", () => {
       safeRadius: 1,
       seed: "repeatable",
       startX: 4,
-      startY: 4
+      startY: 4,
     };
 
     const first = generateMinefield(config);
     const second = generateMinefield(config);
 
-    expect(first.tiles.map((tile) => tile.hasMine)).toEqual(second.tiles.map((tile) => tile.hasMine));
+    expect(first.tiles.map((tile) => tile.hasMine)).toEqual(
+      second.tiles.map((tile) => tile.hasMine),
+    );
     expect(first.tiles.map((tile) => tile.adjacentMineCount)).toEqual(
-      second.tiles.map((tile) => tile.adjacentMineCount)
+      second.tiles.map((tile) => tile.adjacentMineCount),
     );
   });
 
@@ -64,7 +71,7 @@ describe("generateMinefield", () => {
       safeRadius: 1,
       seed: "counts",
       startX: 4,
-      startY: 7
+      startY: 7,
     });
 
     expect(() => validateMinefield(field)).not.toThrow();

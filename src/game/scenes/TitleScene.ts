@@ -64,7 +64,7 @@ export class TitleScene extends Phaser.Scene {
       COLORS.panel,
     );
     this.add
-      .text(320, 790, "v0.2.0 beta", { fontSize: "14px", color: "#d7a15b" })
+      .text(320, 790, "v1.0.0", { fontSize: "14px", color: "#d7a15b" })
       .setOrigin(0.5);
 
     const state = getGameState();

@@ -37,8 +37,8 @@ export const MONSTERS: readonly MonsterDefinition[] = [
     boss: false,
     drops: [
       { itemId: "item.slimeCore", weight: 5, min: 1, max: 2 },
-      { itemId: "item.copperOre", weight: 2, min: 1, max: 1 }
-    ]
+      { itemId: "item.copperOre", weight: 2, min: 1, max: 1 },
+    ],
   },
   {
     id: "monster.bat",
@@ -50,8 +50,8 @@ export const MONSTERS: readonly MonsterDefinition[] = [
     boss: false,
     drops: [
       { itemId: "item.batWing", weight: 5, min: 1, max: 2 },
-      { itemId: "item.blueCrystal", weight: 2, min: 1, max: 1 }
-    ]
+      { itemId: "item.blueCrystal", weight: 2, min: 1, max: 1 },
+    ],
   },
   {
     id: "monster.rockGolem",
@@ -63,8 +63,8 @@ export const MONSTERS: readonly MonsterDefinition[] = [
     boss: false,
     drops: [
       { itemId: "item.golemShard", weight: 4, min: 1, max: 2 },
-      { itemId: "item.obsidian", weight: 2, min: 1, max: 1 }
-    ]
+      { itemId: "item.obsidian", weight: 2, min: 1, max: 1 },
+    ],
   },
   {
     id: "monster.flameSlime",
@@ -76,8 +76,8 @@ export const MONSTERS: readonly MonsterDefinition[] = [
     boss: false,
     drops: [
       { itemId: "item.flameGel", weight: 4, min: 1, max: 2 },
-      { itemId: "item.redCrystal", weight: 2, min: 1, max: 1 }
-    ]
+      { itemId: "item.redCrystal", weight: 2, min: 1, max: 1 },
+    ],
   },
   {
     id: "monster.ancientGuardian",
@@ -89,8 +89,8 @@ export const MONSTERS: readonly MonsterDefinition[] = [
     boss: false,
     drops: [
       { itemId: "item.guardianGear", weight: 4, min: 1, max: 2 },
-      { itemId: "item.ancientCrystal", weight: 2, min: 1, max: 1 }
-    ]
+      { itemId: "item.ancientCrystal", weight: 2, min: 1, max: 1 },
+    ],
   },
   {
     id: "monster.mineKing",
@@ -102,9 +102,9 @@ export const MONSTERS: readonly MonsterDefinition[] = [
     boss: true,
     drops: [
       { itemId: "item.bossRelic", weight: 5, min: 1, max: 1 },
-      { itemId: "item.guardianGear", weight: 2, min: 2, max: 4 }
-    ]
-  }
+      { itemId: "item.guardianGear", weight: 2, min: 2, max: 4 },
+    ],
+  },
 ];
 
 export function getMonster(id: MonsterId): MonsterDefinition {

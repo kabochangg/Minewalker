@@ -22,7 +22,8 @@ export interface AreaDefinition {
   readonly maxDepth: number;
   readonly mineDensity: number;
   readonly difficulty: number;
-  readonly theme: "beginnerMine" | "crystalCave" | "volcanoMine" | "ancientSite";
+  readonly theme:
+    "beginnerMine" | "crystalCave" | "volcanoMine" | "ancientSite";
   readonly monsterIds: readonly MonsterId[];
   readonly materialIds: readonly ItemId[];
   readonly unlockRequirement?: AreaUnlockRequirement;
@@ -39,7 +40,13 @@ export const AREAS: readonly AreaDefinition[] = [
     difficulty: 1,
     theme: "beginnerMine",
     monsterIds: ["monster.slime"],
-    materialIds: ["item.stone", "item.coal", "item.ironOre", "item.copperOre", "item.slimeCore"]
+    materialIds: [
+      "item.stone",
+      "item.coal",
+      "item.ironOre",
+      "item.copperOre",
+      "item.slimeCore",
+    ],
   },
   {
     id: "area.crystalCave",
@@ -51,13 +58,18 @@ export const AREAS: readonly AreaDefinition[] = [
     difficulty: 2,
     theme: "crystalCave",
     monsterIds: ["monster.slime", "monster.bat"],
-    materialIds: ["item.silverOre", "item.blueCrystal", "item.greenCrystal", "item.batWing"],
+    materialIds: [
+      "item.silverOre",
+      "item.blueCrystal",
+      "item.greenCrystal",
+      "item.batWing",
+    ],
     unlockRequirement: {
       playerLevel: 3,
       baseLevel: 2,
       coins: 80,
-      items: { "item.ironOre": 8, "item.blueCrystal": 2 }
-    }
+      items: { "item.ironOre": 8, "item.blueCrystal": 2 },
+    },
   },
   {
     id: "area.volcanoMine",
@@ -69,13 +81,23 @@ export const AREAS: readonly AreaDefinition[] = [
     difficulty: 3,
     theme: "volcanoMine",
     monsterIds: ["monster.rockGolem", "monster.flameSlime"],
-    materialIds: ["item.goldOre", "item.obsidian", "item.redCrystal", "item.golemShard", "item.flameGel"],
+    materialIds: [
+      "item.goldOre",
+      "item.obsidian",
+      "item.redCrystal",
+      "item.golemShard",
+      "item.flameGel",
+    ],
     unlockRequirement: {
       playerLevel: 8,
       baseLevel: 3,
       coins: 240,
-      items: { "item.silverOre": 8, "item.greenCrystal": 3, "item.minePart": 5 }
-    }
+      items: {
+        "item.silverOre": 8,
+        "item.greenCrystal": 3,
+        "item.minePart": 5,
+      },
+    },
   },
   {
     id: "area.ancientSite",
@@ -87,14 +109,19 @@ export const AREAS: readonly AreaDefinition[] = [
     difficulty: 4,
     theme: "ancientSite",
     monsterIds: ["monster.ancientGuardian", "monster.mineKing"],
-    materialIds: ["item.ancientCrystal", "item.guardianGear", "item.bossRelic", "item.fuseCore"],
+    materialIds: [
+      "item.ancientCrystal",
+      "item.guardianGear",
+      "item.bossRelic",
+      "item.fuseCore",
+    ],
     unlockRequirement: {
       playerLevel: 14,
       baseLevel: 4,
       coins: 600,
-      items: { "item.goldOre": 10, "item.redCrystal": 5, "item.golemShard": 3 }
-    }
-  }
+      items: { "item.goldOre": 10, "item.redCrystal": 5, "item.golemShard": 3 },
+    },
+  },
 ];
 
 export function getArea(id: AreaId): AreaDefinition {

@@ -10,7 +10,7 @@ const DIRECTIONS: readonly Readonly<[number, number]>[] = [
   [1, 0],
   [-1, 1],
   [0, 1],
-  [1, 1]
+  [1, 1],
 ];
 
 export function generateMinefield(config: MinefieldConfig): Minefield {
@@ -18,7 +18,9 @@ export function generateMinefield(config: MinefieldConfig): Minefield {
   const safeTiles = buildSafeTiles(config);
   const candidates = buildMineCandidates(config, safeTiles);
   if (config.mineCount > candidates.length) {
-    throw new Error("mineCount exceeds available tiles after applying safeRadius");
+    throw new Error(
+      "mineCount exceeds available tiles after applying safeRadius",
+    );
   }
 
   const rng = createRandom(config.seed);
@@ -41,15 +43,25 @@ export function generateMinefield(config: MinefieldConfig): Minefield {
       tiles.push({
         x,
         y,
-        state: isRevealed ? "revealedFloor" : hasMine ? "mineWall" : "hiddenWall",
+        state: isRevealed
+          ? "revealedFloor"
+          : hasMine
+            ? "mineWall"
+            : "hiddenWall",
         mark: "none",
         hasMine,
-        adjacentMineCount: countAdjacentMines(x, y, config.width, config.height, mines),
+        adjacentMineCount: countAdjacentMines(
+          x,
+          y,
+          config.width,
+          config.height,
+          mines,
+        ),
         mineId: hasMine ? "mine.normal" : undefined,
         breakCost: 1,
         durability: isStart || isRevealed ? 0 : 1,
         isWalkable: isRevealed,
-        isRevealed
+        isRevealed,
       });
     }
   }
@@ -60,25 +72,36 @@ export function generateMinefield(config: MinefieldConfig): Minefield {
     tiles,
     seed: config.seed,
     startX: config.startX,
-    startY: config.startY
+    startY: config.startY,
   };
   validateMinefield(field);
   return field;
 }
 
-export function neighbors(field: Minefield, x: number, y: number): readonly Tile[] {
+export function neighbors(
+  field: Minefield,
+  x: number,
+  y: number,
+): readonly Tile[] {
   return DIRECTIONS.map(([dx, dy]) => getTile(field, x + dx, y + dy)).filter(
-    (tile): tile is Tile => tile !== undefined
+    (tile): tile is Tile => tile !== undefined,
   );
 }
 
-export function isAdjacent(a: { readonly x: number; readonly y: number }, b: Tile): boolean {
-  return Math.abs(a.x - b.x) + Math.abs(a.y - b.y) === 1;
+export function isAdjacent(
+  a: { readonly x: number; readonly y: number },
+  b: { readonly x: number; readonly y: number },
+): boolean {
+  const dx = Math.abs(a.x - b.x);
+  const dy = Math.abs(a.y - b.y);
+  return Math.max(dx, dy) === 1;
 }
 
 export function validateMinefield(field: Minefield): void {
   for (const tile of field.tiles) {
-    const actual = neighbors(field, tile.x, tile.y).filter((neighbor) => neighbor.hasMine).length;
+    const actual = neighbors(field, tile.x, tile.y).filter(
+      (neighbor) => neighbor.hasMine,
+    ).length;
     if (actual !== tile.adjacentMineCount) {
       throw new Error(`Invalid adjacent mine count at ${tile.x},${tile.y}`);
     }
@@ -89,7 +112,12 @@ function validateConfig(config: MinefieldConfig): void {
   if (config.width <= 0 || config.height <= 0) {
     throw new Error("Minefield width and height must be positive");
   }
-  if (config.startX < 0 || config.startY < 0 || config.startX >= config.width || config.startY >= config.height) {
+  if (
+    config.startX < 0 ||
+    config.startY < 0 ||
+    config.startX >= config.width ||
+    config.startY >= config.height
+  ) {
     throw new Error("Minefield start position must be inside the board");
   }
   if (config.mineCount < 0) {
@@ -99,8 +127,16 @@ function validateConfig(config: MinefieldConfig): void {
 
 function buildSafeTiles(config: MinefieldConfig): Set<string> {
   const safeTiles = new Set<string>();
-  for (let y = config.startY - config.safeRadius; y <= config.startY + config.safeRadius; y += 1) {
-    for (let x = config.startX - config.safeRadius; x <= config.startX + config.safeRadius; x += 1) {
+  for (
+    let y = config.startY - config.safeRadius;
+    y <= config.startY + config.safeRadius;
+    y += 1
+  ) {
+    for (
+      let x = config.startX - config.safeRadius;
+      x <= config.startX + config.safeRadius;
+      x += 1
+    ) {
       if (x >= 0 && y >= 0 && x < config.width && y < config.height) {
         safeTiles.add(tileKey(x, y));
       }
@@ -109,7 +145,10 @@ function buildSafeTiles(config: MinefieldConfig): Set<string> {
   return safeTiles;
 }
 
-function buildMineCandidates(config: MinefieldConfig, safeTiles: Set<string>): string[] {
+function buildMineCandidates(
+  config: MinefieldConfig,
+  safeTiles: Set<string>,
+): string[] {
   const candidates: string[] = [];
   for (let y = 0; y < config.height; y += 1) {
     for (let x = 0; x < config.width; x += 1) {
@@ -127,7 +166,7 @@ function countAdjacentMines(
   y: number,
   width: number,
   height: number,
-  mines: ReadonlySet<string>
+  mines: ReadonlySet<string>,
 ): number {
   return DIRECTIONS.reduce((count, [dx, dy]) => {
     const nextX = x + dx;

@@ -5,7 +5,11 @@ import { STARTER_EQUIPMENT_IDS } from "../data/equipment";
 import { isItemId, type ItemId } from "../data/items";
 import type { MonsterId } from "../data/monsters";
 import type { UpgradeId } from "../data/upgrades";
-import { createInitialInventory, normalizeInventory, type InventoryState } from "../game/systems/InventorySystem";
+import {
+  createInitialInventory,
+  normalizeInventory,
+  type InventoryState,
+} from "../game/systems/InventorySystem";
 
 const SAVE_KEY = "minewalker.save.v2";
 const SAVE_BACKUP_KEY = "minewalker.save.v2.backup";
@@ -20,7 +24,7 @@ const inventorySchema = z.object({
   coolants: z.number().int().nonnegative(),
   disablers: z.number().int().nonnegative(),
   potions: z.number().int().nonnegative(),
-  maps: z.number().int().nonnegative()
+  maps: z.number().int().nonnegative(),
 });
 
 const SaveDataV1Schema = z.object({
@@ -29,15 +33,15 @@ const SaveDataV1Schema = z.object({
     level: z.number().int().positive(),
     exp: z.number().int().nonnegative(),
     hp: z.number().int().nonnegative(),
-    stamina: z.number().int().nonnegative()
+    stamina: z.number().int().nonnegative(),
   }),
   inventory: inventorySchema,
   unlockedAreas: z.array(z.string()),
   settings: z.object({
     sound: z.boolean(),
-    vibration: z.boolean()
+    vibration: z.boolean(),
   }),
-  lastSavedAt: z.string()
+  lastSavedAt: z.string(),
 });
 
 export const SaveDataSchema = z.object({
@@ -51,7 +55,7 @@ export const SaveDataSchema = z.object({
     maxStamina: z.number().int().positive(),
     attack: z.number().int().nonnegative(),
     defense: z.number().int().nonnegative(),
-    coins: z.number().int().nonnegative()
+    coins: z.number().int().nonnegative(),
   }),
   inventory: inventorySchema,
   equipment: z.object({
@@ -59,39 +63,41 @@ export const SaveDataSchema = z.object({
     equipped: z.object({
       pickaxe: z.string(),
       weapon: z.string(),
-      armor: z.string()
-    })
+      armor: z.string(),
+    }),
   }),
   base: z.object({
-    levels: z.record(z.number().int().positive())
+    levels: z.record(z.number().int().positive()),
   }),
   unlockedAreas: z.array(z.string()),
   collection: z.object({
     items: z.array(z.string()),
     monsters: z.array(z.string()),
-    equipment: z.array(z.string())
+    equipment: z.array(z.string()),
   }),
   settings: z.object({
     sound: z.boolean(),
     vibration: z.boolean(),
     reducedMotion: z.boolean(),
     tutorialSeen: z.boolean(),
-    textSize: z.enum(["normal", "large"])
+    textSize: z.enum(["normal", "large"]),
   }),
   statistics: z.object({
     runs: z.number().int().nonnegative(),
     clears: z.number().int().nonnegative(),
     deepestDepth: z.number().int().nonnegative(),
     monstersDefeated: z.record(z.number().int().nonnegative()),
-    bossDefeated: z.boolean()
+    bossDefeated: z.boolean(),
   }),
-  lastSavedAt: z.string()
+  lastSavedAt: z.string(),
 });
 
 export type SaveData = z.infer<typeof SaveDataSchema>;
 type SaveDataV1 = z.infer<typeof SaveDataV1Schema>;
 
-export function createSaveData(inventory: InventoryState = createInitialInventory()): SaveData {
+export function createSaveData(
+  inventory: InventoryState = createInitialInventory(),
+): SaveData {
   return {
     version: 2,
     player: {
@@ -103,47 +109,50 @@ export function createSaveData(inventory: InventoryState = createInitialInventor
       maxStamina: 50,
       attack: 6,
       defense: 2,
-      coins: 0
+      coins: 0,
     },
     inventory: normalizeInventory(inventory),
     equipment: {
       owned: Object.values(STARTER_EQUIPMENT_IDS),
-      equipped: { ...STARTER_EQUIPMENT_IDS }
+      equipped: { ...STARTER_EQUIPMENT_IDS },
     },
     base: {
       levels: {
         "upgrade.base": 1,
         "upgrade.player": 1,
         "upgrade.weaponBench": 1,
-        "upgrade.armorBench": 1
-      }
+        "upgrade.armorBench": 1,
+      },
     },
     unlockedAreas: ["area.beginnerMine"],
     collection: {
       items: [],
       monsters: [],
-      equipment: Object.values(STARTER_EQUIPMENT_IDS)
+      equipment: Object.values(STARTER_EQUIPMENT_IDS),
     },
     settings: {
       sound: true,
       vibration: true,
       reducedMotion: false,
       tutorialSeen: false,
-      textSize: "normal"
+      textSize: "normal",
     },
     statistics: {
       runs: 0,
       clears: 0,
       deepestDepth: 0,
       monstersDefeated: {},
-      bossDefeated: false
+      bossDefeated: false,
     },
-    lastSavedAt: new Date().toISOString()
+    lastSavedAt: new Date().toISOString(),
   };
 }
 
 export function validateSaveData(input: unknown): SaveData {
-  const versioned = z.object({ version: z.number() }).passthrough().parse(input);
+  const versioned = z
+    .object({ version: z.number() })
+    .passthrough()
+    .parse(input);
   if (versioned.version === 1) {
     return migrateV1ToV2(SaveDataV1Schema.parse(input));
   }
@@ -151,7 +160,9 @@ export function validateSaveData(input: unknown): SaveData {
 }
 
 export function migrateV1ToV2(v1: SaveDataV1): SaveData {
-  const next = createSaveData(normalizeInventory(v1.inventory as InventoryState));
+  const next = createSaveData(
+    normalizeInventory(v1.inventory as InventoryState),
+  );
   return {
     ...next,
     player: {
@@ -159,23 +170,29 @@ export function migrateV1ToV2(v1: SaveDataV1): SaveData {
       level: v1.player.level,
       exp: v1.player.exp,
       hp: v1.player.hp,
-      stamina: v1.player.stamina
+      stamina: v1.player.stamina,
     },
     unlockedAreas: normalizeAreaIds(v1.unlockedAreas),
     settings: {
       ...next.settings,
       sound: v1.settings.sound,
-      vibration: v1.settings.vibration
+      vibration: v1.settings.vibration,
     },
-    lastSavedAt: v1.lastSavedAt
+    lastSavedAt: v1.lastSavedAt,
   };
 }
 
-export function saveGame(data: SaveData, storage: Storage | undefined = getBrowserStorage()): void {
+export function saveGame(
+  data: SaveData,
+  storage: Storage | undefined = getBrowserStorage(),
+): void {
   if (!storage) {
     return;
   }
-  const serialized = JSON.stringify({ ...normalizeSaveData(data), lastSavedAt: new Date().toISOString() });
+  const serialized = JSON.stringify({
+    ...normalizeSaveData(data),
+    lastSavedAt: new Date().toISOString(),
+  });
   const existing = storage.getItem(SAVE_KEY);
   if (existing) {
     storage.setItem(SAVE_BACKUP_KEY, existing);
@@ -183,7 +200,9 @@ export function saveGame(data: SaveData, storage: Storage | undefined = getBrows
   storage.setItem(SAVE_KEY, serialized);
 }
 
-export function loadGame(storage: Storage | undefined = getBrowserStorage()): SaveData | undefined {
+export function loadGame(
+  storage: Storage | undefined = getBrowserStorage(),
+): SaveData | undefined {
   if (!storage) {
     return undefined;
   }
@@ -191,7 +210,7 @@ export function loadGame(storage: Storage | undefined = getBrowserStorage()): Sa
     storage.getItem(SAVE_KEY),
     storage.getItem(SAVE_BACKUP_KEY),
     storage.getItem(LEGACY_SAVE_KEY),
-    storage.getItem(LEGACY_SAVE_BACKUP_KEY)
+    storage.getItem(LEGACY_SAVE_BACKUP_KEY),
   ];
   for (const serialized of candidates) {
     if (!serialized) {
@@ -214,26 +233,35 @@ export function normalizeSaveData(data: SaveData): SaveData {
     collection: {
       items: normalizeItemIds(data.collection.items),
       monsters: Array.from(new Set(data.collection.monsters)) as MonsterId[],
-      equipment: Array.from(new Set(data.collection.equipment)) as EquipmentId[]
+      equipment: Array.from(
+        new Set(data.collection.equipment),
+      ) as EquipmentId[],
     },
     equipment: {
       owned: Array.from(new Set(data.equipment.owned)) as EquipmentId[],
-      equipped: data.equipment.equipped as SaveData["equipment"]["equipped"]
+      equipped: data.equipment.equipped as SaveData["equipment"]["equipped"],
     },
     base: {
       levels: {
         "upgrade.base": data.base.levels["upgrade.base"] ?? 1,
         "upgrade.player": data.base.levels["upgrade.player"] ?? 1,
         "upgrade.weaponBench": data.base.levels["upgrade.weaponBench"] ?? 1,
-        "upgrade.armorBench": data.base.levels["upgrade.armorBench"] ?? 1
-      } as Record<UpgradeId, number>
-    }
+        "upgrade.armorBench": data.base.levels["upgrade.armorBench"] ?? 1,
+      } as Record<UpgradeId, number>,
+    },
   };
 }
 
 function normalizeAreaIds(input: readonly string[]): AreaId[] {
-  const valid: readonly AreaId[] = ["area.beginnerMine", "area.crystalCave", "area.volcanoMine", "area.ancientSite"];
-  const normalized = input.filter((id): id is AreaId => valid.includes(id as AreaId));
+  const valid: readonly AreaId[] = [
+    "area.beginnerMine",
+    "area.crystalCave",
+    "area.volcanoMine",
+    "area.ancientSite",
+  ];
+  const normalized = input.filter((id): id is AreaId =>
+    valid.includes(id as AreaId),
+  );
   return Array.from(new Set(["area.beginnerMine", ...normalized]));
 }
 

@@ -20,7 +20,7 @@ export class SettingsScene extends Phaser.Scene {
       .text(
         195,
         650,
-        "公開ベータ v0.2.0\nセーブデータはこの端末内にのみ保存され、外部へ送信されません。\n通信料などは利用者の負担です。",
+        "正式版 v1.0.0\nセーブデータはこの端末内にのみ保存され、外部へ送信されません。\n通信料などは利用者の負担です。",
         {
           fontSize: "13px",
           color: COLORS.muted,

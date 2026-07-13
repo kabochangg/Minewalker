@@ -19,7 +19,7 @@ describe("mine handling", () => {
       safeRadius: 0,
       seed: "cool",
       startX: 0,
-      startY: 0
+      startY: 0,
     });
     const mine = field.tiles.find((tile) => tile.hasMine);
     if (!mine) {
@@ -41,7 +41,7 @@ describe("mine handling", () => {
       safeRadius: 0,
       seed: "disable",
       startX: 0,
-      startY: 0
+      startY: 0,
     });
     const mine = field.tiles.find((tile) => tile.hasMine);
     if (!mine) {
@@ -51,12 +51,42 @@ describe("mine handling", () => {
     const result = disableMine(field, createInitialInventory(), mine);
 
     expect(result.success).toBe(true);
-    expect(result.inventory.disablers).toBe(BALANCE.mining.initialDisablers - 1);
+    expect(result.inventory.disablers).toBe(
+      BALANCE.mining.initialDisablers - 1,
+    );
     expect(getTile(result.field, mine.x, mine.y)?.state).toBe("disabledMine");
   });
 });
 
 describe("mining", () => {
+  it("allows mining a diagonally adjacent wall", () => {
+    const field = generateMinefield({
+      width: 3,
+      height: 3,
+      mineCount: 0,
+      safeRadius: 0,
+      seed: "diagonal-mine",
+      startX: 0,
+      startY: 0,
+    });
+    const wall = getTile(field, 1, 1);
+    if (!wall) {
+      throw new Error("Expected diagonal wall");
+    }
+
+    const player = { ...createInitialPlayer(), x: 0, y: 0 };
+    const result = mineTile(
+      field,
+      player,
+      createInitialInventory(),
+      wall,
+      "test",
+    );
+
+    expect(result.mined).toBe(true);
+    expect(getTile(result.field, 1, 1)?.isWalkable).toBe(true);
+  });
+
   it("damages the player when mining an untreated mine", () => {
     const field = generateMinefield({
       width: 4,
@@ -65,14 +95,22 @@ describe("mining", () => {
       safeRadius: 0,
       seed: "boom",
       startX: 0,
-      startY: 0
+      startY: 0,
     });
-    const mine = field.tiles.find((tile) => tile.hasMine && Math.abs(tile.x) + Math.abs(tile.y) === 1);
+    const mine = field.tiles.find(
+      (tile) => tile.hasMine && Math.abs(tile.x) + Math.abs(tile.y) === 1,
+    );
     if (!mine) {
       return;
     }
 
-    const result = mineTile(field, createInitialPlayer(), createInitialInventory(), mine, "test");
+    const result = mineTile(
+      field,
+      createInitialPlayer(),
+      createInitialInventory(),
+      mine,
+      "test",
+    );
 
     expect(result.exploded).toBe(true);
     expect(result.player.hp).toBe(100 - BALANCE.mine.normalDamage);
@@ -81,14 +119,22 @@ describe("mining", () => {
 
 describe("drop and combat", () => {
   it("rolls deterministic drops", () => {
-    const entries = [{ itemId: "item.ironOre" as const, weight: 1, min: 1, max: 1 }];
+    const entries = [
+      { itemId: "item.ironOre" as const, weight: 1, min: 1, max: 1 },
+    ];
 
-    expect(rollWeightedDrop(entries, "drop")).toEqual({ itemId: "item.ironOre", amount: 1 });
+    expect(rollWeightedDrop(entries, "drop")).toEqual({
+      itemId: "item.ironOre",
+      amount: 1,
+    });
   });
 
   it("attacks monsters with at least one damage", () => {
     const monster = getMonster("monster.slime");
-    const result = attackMonster(createInitialPlayer(), monster, { hp: monster.hp, maxHp: monster.hp });
+    const result = attackMonster(createInitialPlayer(), monster, {
+      hp: monster.hp,
+      maxHp: monster.hp,
+    });
 
     expect(result.monster.hp).toBeLessThan(monster.hp);
   });

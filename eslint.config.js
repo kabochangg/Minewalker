@@ -4,7 +4,7 @@ import tseslint from "typescript-eslint";
 
 export default tseslint.config(
   {
-    ignores: ["dist", "node_modules", "playwright-report", "test-results"]
+    ignores: ["dist", "node_modules", "playwright-report", "test-results"],
   },
   js.configs.recommended,
   ...tseslint.configs.strict,
@@ -13,12 +13,12 @@ export default tseslint.config(
       ecmaVersion: 2022,
       globals: {
         ...globals.browser,
-        ...globals.node
-      }
+        ...globals.node,
+      },
     },
     rules: {
       "@typescript-eslint/no-explicit-any": "error",
-      "@typescript-eslint/consistent-type-definitions": ["error", "interface"]
-    }
-  }
+      "@typescript-eslint/consistent-type-definitions": ["error", "interface"],
+    },
+  },
 );

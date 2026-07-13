@@ -1,6 +1,6 @@
-# Minewalker v0.2.0 Public Beta
+# Minewalker v1.0.0
 
-Minewalker is a public-beta smartphone portrait PWA game built around minesweeper-style deduction, mining, combat, crafting, and base progression.
+Minewalker is a complete smartphone portrait PWA game built around minesweeper-style deduction, mining, combat, crafting, and base progression.
 
 ## How to Play
 
@@ -33,12 +33,20 @@ Minewalker is a public-beta smartphone portrait PWA game built around minesweepe
   - Mobile portrait E2E smoke coverage.
   - Phaser vendor chunk split for production builds.
   - Production pixel-art player, monsters, themed tiles, state markers, and PWA PNG icons.
+- Release completion:
+  - Eight-direction virtual joystick with diagonal corner blocking and camera follow.
+  - Selectable equipment and recipe crafting.
+  - Paged bag management with protected important items.
+  - Separate validated interrupted-run save and resume flow.
+  - Lightweight action effects, generated audio cues, vibration, and reduced-motion support.
+  - PWA update/offline notices and complete mobile E2E coverage.
 
 ## Commands
 
 ```bash
 npm install
 npm run dev
+npm run format
 npm run lint
 npm run test
 npm run build
@@ -52,17 +60,17 @@ npm run e2e
 - Recommended preset: Vite
 - Recommended Node.js version: 20 or newer
 
-The production project is `minewalker`, connected to the GitHub `main` branch. The public URL is added here after the first authenticated deployment.
+The production project is `minewalker`, connected to the GitHub `main` branch. Cloudflare Pages automatically deploys successful pushes to `main`.
 
-## Privacy and Beta Notice
+## Privacy and Terms
 
-- This is a public beta; balance and presentation may change.
 - Save data and settings are stored only in the browser on the current device using local storage.
 - The game does not transmit save data, use analytics, require accounts, or process payments.
 - Clearing browser storage removes local progress. The built-in backup is also device-local.
 - Network and device costs remain the user's responsibility.
+- See [LEGAL.md](LEGAL.md) for the complete terms and privacy policy.
 
-## Known Beta Limitations
+## Optional Future Enhancements
 
-- Character animation frames, equipment appearance variants, audio, and the complete effect set are planned for a later release.
-- A custom domain and cloud save are not included in v0.2.0.
+- Expanded character animation frames and equipment appearance variants.
+- Area music, longer effect sets, a custom domain, and optional cloud save.

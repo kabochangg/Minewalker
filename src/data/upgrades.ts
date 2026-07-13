@@ -1,6 +1,10 @@
 import type { ItemId } from "./items";
 
-export type UpgradeId = "upgrade.base" | "upgrade.player" | "upgrade.weaponBench" | "upgrade.armorBench";
+export type UpgradeId =
+  | "upgrade.base"
+  | "upgrade.player"
+  | "upgrade.weaponBench"
+  | "upgrade.armorBench";
 
 export interface UpgradeCost {
   readonly coins: number;
@@ -23,8 +27,8 @@ export const UPGRADES: readonly UpgradeDefinition[] = [
       { coins: 40, items: { "item.stone": 6, "item.ironOre": 4 } },
       { coins: 120, items: { "item.ironOre": 8, "item.blueCrystal": 2 } },
       { coins: 260, items: { "item.silverOre": 8, "item.greenCrystal": 3 } },
-      { coins: 520, items: { "item.goldOre": 8, "item.redCrystal": 4 } }
-    ]
+      { coins: 520, items: { "item.goldOre": 8, "item.redCrystal": 4 } },
+    ],
   },
   {
     id: "upgrade.player",
@@ -37,10 +41,16 @@ export const UPGRADES: readonly UpgradeDefinition[] = [
       { coins: 220, items: { "item.silverOre": 5, "item.greenCrystal": 2 } },
       { coins: 320, items: { "item.golemShard": 2, "item.obsidian": 3 } },
       { coins: 460, items: { "item.redCrystal": 3, "item.flameGel": 2 } },
-      { coins: 620, items: { "item.guardianGear": 2, "item.ancientCrystal": 1 } },
-      { coins: 800, items: { "item.guardianGear": 3, "item.ancientCrystal": 2 } },
-      { coins: 1000, items: { "item.bossRelic": 1 } }
-    ]
+      {
+        coins: 620,
+        items: { "item.guardianGear": 2, "item.ancientCrystal": 1 },
+      },
+      {
+        coins: 800,
+        items: { "item.guardianGear": 3, "item.ancientCrystal": 2 },
+      },
+      { coins: 1000, items: { "item.bossRelic": 1 } },
+    ],
   },
   {
     id: "upgrade.weaponBench",
@@ -50,8 +60,11 @@ export const UPGRADES: readonly UpgradeDefinition[] = [
       { coins: 50, items: { "item.copperOre": 6 } },
       { coins: 150, items: { "item.ironOre": 10, "item.minePart": 3 } },
       { coins: 320, items: { "item.silverOre": 8, "item.fuseCore": 2 } },
-      { coins: 700, items: { "item.guardianGear": 3, "item.ancientCrystal": 2 } }
-    ]
+      {
+        coins: 700,
+        items: { "item.guardianGear": 3, "item.ancientCrystal": 2 },
+      },
+    ],
   },
   {
     id: "upgrade.armorBench",
@@ -61,9 +74,12 @@ export const UPGRADES: readonly UpgradeDefinition[] = [
       { coins: 50, items: { "item.slimeCore": 4, "item.copperOre": 3 } },
       { coins: 150, items: { "item.ironOre": 8, "item.batWing": 3 } },
       { coins: 320, items: { "item.obsidian": 5, "item.golemShard": 2 } },
-      { coins: 700, items: { "item.guardianGear": 3, "item.ancientCrystal": 2 } }
-    ]
-  }
+      {
+        coins: 700,
+        items: { "item.guardianGear": 3, "item.ancientCrystal": 2 },
+      },
+    ],
+  },
 ];
 
 export function getUpgrade(id: UpgradeId): UpgradeDefinition {

@@ -160,13 +160,7 @@ mineWall
 
 ```ts
 type PlayerActionState =
-  | "idle"
-  | "moving"
-  | "mining"
-  | "attacking"
-  | "damaged"
-  | "usingItem"
-  | "dead";
+  "idle" | "moving" | "mining" | "attacking" | "damaged" | "usingItem" | "dead";
 ```
 
 ### 敵AI

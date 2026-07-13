@@ -1,8 +1,12 @@
-# Minewalker Asset Gaps
+# Minewalker Asset Status
 
-The current playable slice uses Phaser-drawn placeholder pixel shapes. Production art still needs individual transparent assets matching `ART_ASSET_SPEC.md`.
+The release build includes production PNG assets for the player, all six monsters, four themed tile sets, mine states, exits, and 192/512/maskable PWA icons.
 
-- Player animations for idle, walk, mine, attack, damage, item use, death, victory.
-- Tile sets for beginner mine, crystal cave, volcano mine, and ancient site.
-- Mine states, flags, number glyphs, items, monsters, equipment, UI panels, and effects.
-- PWA PNG icons can replace the temporary SVG icon before store-style validation.
+Release-safe procedural rendering remains in use for number glyphs, flags, HUD panels, action effects, and audio cues. This keeps the PWA small and preserves readable UI text.
+
+Optional post-release art upgrades:
+
+- Multi-frame player animations for mining, attacking, damage, item use, death, and victory.
+- Individual inventory and equipment icons.
+- Longer multi-frame dust, explosion, cooling, and reward effects.
+- Area-specific ambient audio and music.

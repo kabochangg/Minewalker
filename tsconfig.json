@@ -16,6 +16,12 @@
     "noEmit": true,
     "types": ["vitest/globals", "node"]
   },
-  "include": ["src", "tests", "vite.config.ts", "eslint.config.js", "playwright.config.ts"],
+  "include": [
+    "src",
+    "tests",
+    "vite.config.ts",
+    "eslint.config.js",
+    "playwright.config.ts"
+  ],
   "references": []
 }

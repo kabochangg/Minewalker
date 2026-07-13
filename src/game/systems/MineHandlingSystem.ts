@@ -16,17 +16,22 @@ export function toggleFlag(field: Minefield, tile: Tile): Minefield {
   }
   return replaceTile(field, {
     ...tile,
-    mark: tile.mark === "flag" ? "none" : "flag"
+    mark: tile.mark === "flag" ? "none" : "flag",
   });
 }
 
 export function coolMine(
   field: Minefield,
   inventory: InventoryState,
-  tile: Tile
+  tile: Tile,
 ): MineActionResult {
   if (!tile.hasMine || tile.state === "disabledMine") {
-    return { field, inventory, message: "ここに冷却できる地雷はありません", success: false };
+    return {
+      field,
+      inventory,
+      message: "ここに冷却できる地雷はありません",
+      success: false,
+    };
   }
   const nextInventory = consumeCoolant(inventory);
   if (!nextInventory) {
@@ -36,34 +41,44 @@ export function coolMine(
     field: replaceTile(field, {
       ...tile,
       state: "cooledMine",
-      mark: "none"
+      mark: "none",
     }),
     inventory: nextInventory,
     message: "地雷を冷却しました",
-    success: true
+    success: true,
   };
 }
 
 export function disableMine(
   field: Minefield,
   inventory: InventoryState,
-  tile: Tile
+  tile: Tile,
 ): MineActionResult {
   if (!tile.hasMine) {
-    return { field, inventory, message: "ここに解除できる地雷はありません", success: false };
+    return {
+      field,
+      inventory,
+      message: "ここに解除できる地雷はありません",
+      success: false,
+    };
   }
   const nextInventory = consumeDisabler(inventory);
   if (!nextInventory) {
-    return { field, inventory, message: "解除装置が足りません", success: false };
+    return {
+      field,
+      inventory,
+      message: "解除装置が足りません",
+      success: false,
+    };
   }
   return {
     field: replaceTile(field, {
       ...tile,
       state: "disabledMine",
-      mark: "none"
+      mark: "none",
     }),
     inventory: nextInventory,
     message: "地雷を解除しました",
-    success: true
+    success: true,
   };
 }

@@ -1,6 +1,7 @@
 $ErrorActionPreference = "Stop"
 
 $root = Split-Path -Parent $PSScriptRoot
+$env:VITE_E2E = "1"
 $build = Start-Process `
   -FilePath "npm.cmd" `
   -ArgumentList "run", "build" `
@@ -15,7 +16,7 @@ if ($build.ExitCode -ne 0) {
 
 $server = Start-Process `
   -FilePath "node" `
-  -ArgumentList "node_modules/vite/bin/vite.js", "preview", "--host", "127.0.0.1", "--port", "4173" `
+  -ArgumentList "node_modules/vite/bin/vite.js", "preview", "--host", "127.0.0.1", "--port", "4173", "--strictPort" `
   -WorkingDirectory $root `
   -WindowStyle Hidden `
   -PassThru

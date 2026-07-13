@@ -17,21 +17,25 @@ export interface AttackResult {
 export function attackMonster(
   player: PlayerState,
   monsterDefinition: MonsterDefinition,
-  monster: CombatantState
+  monster: CombatantState,
 ): AttackResult {
   const damage = Math.max(1, player.attack - monsterDefinition.defense);
   const hp = Math.max(0, monster.hp - damage);
   return {
     player: { ...player, actionState: "attacking" },
     monster: { ...monster, hp },
-    message: hp === 0 ? `${monsterDefinition.name}を倒しました` : `${damage}ダメージ`,
-    defeated: hp === 0
+    message:
+      hp === 0 ? `${monsterDefinition.name}を倒しました` : `${damage}ダメージ`,
+    defeated: hp === 0,
   };
 }
 
 export function monsterAttack(
   player: PlayerState,
-  monsterDefinition: MonsterDefinition
+  monsterDefinition: MonsterDefinition,
 ): PlayerState {
-  return damagePlayer(player, Math.max(1, monsterDefinition.attack - player.defense));
+  return damagePlayer(
+    player,
+    Math.max(1, monsterDefinition.attack - player.defense),
+  );
 }

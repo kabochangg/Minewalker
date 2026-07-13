@@ -1,13 +1,7 @@
 import { BALANCE } from "../../data/balance";
 
 export type PlayerActionState =
-  | "idle"
-  | "moving"
-  | "mining"
-  | "attacking"
-  | "damaged"
-  | "usingItem"
-  | "dead";
+  "idle" | "moving" | "mining" | "attacking" | "damaged" | "usingItem" | "dead";
 
 export interface PlayerState {
   readonly x: number;
@@ -35,16 +29,20 @@ export function createInitialPlayer(): PlayerState {
     defense: BALANCE.player.defense,
     coins: 0,
     depth: 0,
-    actionState: "idle"
+    actionState: "idle",
   };
 }
 
-export function movePlayer(player: PlayerState, x: number, y: number): PlayerState {
+export function movePlayer(
+  player: PlayerState,
+  x: number,
+  y: number,
+): PlayerState {
   return {
     ...player,
     x,
     y,
-    actionState: "moving"
+    actionState: "moving",
   };
 }
 
@@ -53,6 +51,6 @@ export function damagePlayer(player: PlayerState, damage: number): PlayerState {
   return {
     ...player,
     hp,
-    actionState: hp === 0 ? "dead" : "damaged"
+    actionState: hp === 0 ? "dead" : "damaged",
   };
 }

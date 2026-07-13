@@ -11,9 +11,13 @@ export function createRandom(seed: string): RandomSource {
     next: () => rng(),
     int: (minInclusive: number, maxInclusive: number) => {
       if (maxInclusive < minInclusive) {
-        throw new Error("maxInclusive must be greater than or equal to minInclusive");
+        throw new Error(
+          "maxInclusive must be greater than or equal to minInclusive",
+        );
       }
-      return Math.floor(rng() * (maxInclusive - minInclusive + 1)) + minInclusive;
-    }
+      return (
+        Math.floor(rng() * (maxInclusive - minInclusive + 1)) + minInclusive
+      );
+    },
   };
 }

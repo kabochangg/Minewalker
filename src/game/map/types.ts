@@ -53,7 +53,11 @@ export function tileKey(x: number, y: number): string {
   return `${x},${y}`;
 }
 
-export function getTile(field: Minefield, x: number, y: number): Tile | undefined {
+export function getTile(
+  field: Minefield,
+  x: number,
+  y: number,
+): Tile | undefined {
   if (x < 0 || y < 0 || x >= field.width || y >= field.height) {
     return undefined;
   }
@@ -64,7 +68,7 @@ export function replaceTile(field: Minefield, nextTile: Tile): Minefield {
   return {
     ...field,
     tiles: field.tiles.map((tile) =>
-      tile.x === nextTile.x && tile.y === nextTile.y ? nextTile : tile
-    )
+      tile.x === nextTile.x && tile.y === nextTile.y ? nextTile : tile,
+    ),
   };
 }

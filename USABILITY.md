@@ -1,114 +1,42 @@
-# USABILITY.md
+# Minewalker Usability Standard
 
-## 1. 目的
-Minewalker をモバイル縦画面、特に iPhone Safari で快適に遊べるようにするための操作性基準をまとめる。
+## Target devices
 
-## 2. 基本方針
-- 盤面の見やすさを最優先する。
-- 片手親指操作で迷いにくい配置を優先する。
-- 押した瞬間に反応が分かることを重視する。
-- 誤操作を減らすため、見た目より広いヒット領域を許容する。
-- 勝敗確定後は入力を止め、状態変化を誤認させない。
+- Primary viewport: 390 × 844.
+- Supported widths: 320–430px.
+- Portrait orientation with safe-area padding.
+- Touch targets are at least 44px.
 
-## 3. 操作要件
-### 移動パッド
-- 円形パッドまたは同等 UI により、72 方向の移動入力を 5°単位で安定して取り分けられること。
-- プレイヤーの見た目の向きは入力方向に対して 5°刻みで滑らかに追従すること。
-- 押しっぱなしで継続移動できること。
-- 入力中は 1 秒で約 2.75 セル分を基準に滑らかに移動すること。
-- 指を離さず別方向へスライドした時、新方向へ切り替えられること。
-- デッドゾーンを小さくしすぎず、静止させたい時に意図せず動かないこと。
+## Exploration controls
 
-### 自動攻撃
-- 追加入力なしで、正面の対象有無にかかわらず自動で発射されること。
-- 攻撃間隔は 1.0 秒ごとで安定すること。
-- 移動パッド長押し中でも攻撃が途切れないこと。
-- プレイヤー正面 0.75 セル前後の短い判定ボックスで対象を判定すること。
-- 攻撃入力時は正面へ弾が飛び、対象へ当たったかどうかが視認できること。
-- 判定ボックス内に複数対象がある場合でも、最も近い 1 体 / 1 枚だけに反応すること。
-- 現在狙っている壁が盤面上で把握できること。
+- The lower-left virtual joystick supports eight directions and continuous hold movement.
+- Sliding while held changes direction without requiring a second touch.
+- A dead zone prevents accidental movement.
+- Diagonal movement cannot pass through blocked corners or occupied monster cells.
+- Tapping and long-pressing use the same world tile hit target; long-press toggles a flag.
+- Action buttons remain reachable by the right thumb while the left thumb holds the joystick.
 
-### プレイヤー向き表示
-- 床 / スタート / 焼け跡 / ゴールのどの上でも即座に視認できること。
-- 単なる矢印ではなく、プレイヤーらしい見た目の中で向きが読めること。
-- 必要に応じて縁取り、影、高コントラスト配色を使うこと。
-- 移動不能時でも入力方向に応じて更新されること。
-- 72 方向入力に追従する 5°刻みの向き変化でも視認性が落ちないこと。
+## Readability
 
-### モンスター追跡と戦闘
-- 出現直後にプレイヤーとの位置関係が把握できること。
-- 単なる「M」表示ではなく、モンスターらしい見た目で識別できること。
-- プレイヤーより遅い速度で追跡しても、視認と回避判断ができること。
-- プレイヤー攻撃が命中した時、ステージ 1 のモンスターは弾 2 発で倒せること。
-- ステージが 5 進むごとに、モンスター撃破に必要な弾数増加が体感でも把握できること。
-- ステージが 10 進むごとに、大型化したモンスターでも視認性と回避判断を損なわないこと。
-- モンスター接触時はプレイヤーがヒットバックし、被弾回数が UI 上で把握できること。
-- プレイヤーは 3 回被弾でゲームオーバーになること。
+- HP uses red and stamina uses green, with labels and values so color is not the only signal.
+- Mine numbers use blue, green, red, purple, and orange while retaining numeric glyphs.
+- Player, monster, mine state, flag, and exit remain distinguishable at 320px width.
+- The player stays near the world-camera center while HUD elements remain fixed.
+- Reduced-motion and large-text settings persist across reloads.
 
-## 4. レイアウト要件
-### 画面構成
-- 上部: 最小限の HUD
-- 中央: 盤面
-- 下部: 操作領域
+## Acceptance checks
 
-### 配置ルール
-- 盤面と操作領域の境界を視覚的に明確にする。
-- 主要ボタンは親指で届きやすい位置に置く。
-- 移動パッドは画面下部中央に配置し、従来比 1.1 倍を目安に拡大する。
-- 自動攻撃インジケーターは移動パッドを邪魔しない位置に置き、状態がひと目で分かること。
-- 操作領域の縦方向サイズは従来比 1.2 倍を目安に広げる。
-- 操作領域名を文字で常時表示しなくても、レイアウトだけで役割が判別できればよい。
-- タップ領域は最低 44px を目安に確保する。
-- 操作領域内で多点タッチ時に入力が潰れないこと。
-- セーフエリアを考慮し、iPhone Safari の表示欠けを避けること。
+1. Continuous joystick movement works at 320, 390, and 428px widths.
+2. All eight directions map to the intended neighboring cell.
+3. Blocked diagonal corners cannot be crossed.
+4. Mining, cooling, disabling, healing, and bag actions remain tappable.
+5. A complete run can reach ResultScene and return to HomeScene.
+6. Settings and permanent save data survive reload.
+7. An interrupted exploration reloads from the separate run save.
+8. The production shell starts while offline after its first online load.
 
-## 5. 受け入れ基準
-1. 10 回連続で狙った 72 方向入力へ向き変更でき、見た目の向きも 5°刻みで破綻なく追従する。
-2. 30 秒連続の長押し移動で入力抜けや暴発が体感上ほぼない。
-3. 円周上の任意の近接角度入力へ自然に入り、5°単位の移動方向切り替えで引っかからない。
-4. 自動攻撃の反復タイミングが 1.0 秒間隔で一定に感じられる。
-5. プレイヤー表示が全主要タイル上で即視認でき、72 方向入力中でも向きが読み取れる。
-6. モンスターは 2 発で倒せ、プレイヤーは 3 回被弾でゲームオーバーになる。
-7. 0 タイル開示時に、連鎖開示が安定して動く。
-8. 移動パッド長押し中も自動攻撃が継続する。
-9. 移動パッド長押し中のスライド方向転換が成立する。
-10. 壁に密着した状態でも、正面判定ボックス内の最も近い 1 マスだけを安定して叩ける。
-11. モンスター接触時にヒットバックが発生し、連続接触でも被弾回数を誤認しない。
-12. 出現したモンスターがプレイヤーより遅い連続移動で追従しても、視認と回避判断ができる。
-13. ゴール開示後、そのマスへ侵入した瞬間にクリア演出へ遷移する。
-14. ステージクリア後、次ステージへ進むボタンまたは同等導線が片手操作で迷わず押せる。
-15. ステージ進行に伴うモンスター速度 3% 上昇、5 ステージごとの HP 増加、10 ステージごとのサイズ増加が UI または挙動で破綻なく反映される。
+## Manual verification
 
-## 6. 検証観点
-- iPhone Safari 縦画面で確認する。
-- 片手操作で中央配置の移動パッドを連続操作し、72 方向の入力切り替えを確認する。
-- 長押し移動中も自動攻撃が継続することを確認する。
-- 自動攻撃の 1.0 秒間隔と、ステージ 1 のモンスター 2 発撃破を確認する。
-- モンスター接触時のヒットバック、3 被弾での敗北遷移、入力ロックを確認する。
-- モンスターの連続移動速度がプレイヤーより遅いことを確認する。
-- 0 タイル連鎖開示時の表示範囲を確認する。
-- ゴール開示から侵入までの導線が理解しやすいことを確認する。
-- ステージクリア後の次ステージ導線と、段階的に強化されたモンスター挙動を確認する。
-
-## 7. 改善優先度
-### 最優先
-- 向き表示の視認性
-- 中央配置パッドの親指到達性
-- 自動攻撃インジケーターの視認性
-- 自動攻撃の反復安定性
-- 移動中も攻撃が継続すること
-- スライド方向転換
-- 勝敗時の入力ロック
-
-### 次点
-- モンスター出現時の視認性調整
-- 勝敗時の導線整理
-- ヘルプ文面の短文化
-- 盤面と操作領域の境界強化
-- 0 タイル連鎖開示の体験改善
-- ゴール発見時の分かりやすさ改善
-
-## 8. 更新ルール
-- 数値調整を変えた場合は、受け入れ基準と検証観点が古くなっていないか確認する。
-- 実装済みの UI 呼称に合わせて、十字キー / 操作パッドなどの用語を統一する。
-- 評価結果は `EVALUATION_LOG.md` に記録し、このファイルには基準のみを残す。
+- Test iPhone Safari and Android Chrome in portrait orientation.
+- Confirm safe-area behavior, PWA installation, touch reachability, and 30-minute stability.
+- Check all major screens at 320 × 568, 390 × 844, and 430 × 932.

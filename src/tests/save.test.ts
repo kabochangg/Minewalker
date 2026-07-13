@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { createInitialInventory } from "../game/systems/InventorySystem";
-import { createSaveData, loadGame, migrateV1ToV2, saveGame, validateSaveData } from "../save/SaveSystem";
+import {
+  createSaveData,
+  loadGame,
+  migrateV1ToV2,
+  saveGame,
+  validateSaveData,
+} from "../save/SaveSystem";
+import { clearRun, loadRun, saveRun } from "../save/RunSaveSystem";
+import { createInitialPlayer } from "../game/entities/player";
+import { generateMinefield } from "../game/systems/MinefieldSystem";
 
 class MemoryStorage implements Storage {
   private readonly values = new Map<string, string>();
@@ -35,7 +44,9 @@ describe("SaveSystem", () => {
     const saveData = createSaveData(createInitialInventory());
 
     expect(validateSaveData(saveData).version).toBe(2);
-    expect(validateSaveData(saveData).equipment.equipped.pickaxe).toBe("equipment.pickaxe.wood");
+    expect(validateSaveData(saveData).equipment.equipped.pickaxe).toBe(
+      "equipment.pickaxe.wood",
+    );
   });
 
   it("migrates v1 saves to v2", () => {
@@ -45,7 +56,7 @@ describe("SaveSystem", () => {
       inventory: createInitialInventory(),
       unlockedAreas: ["area.beginnerMine", "area.crystalCave"],
       settings: { sound: false, vibration: true },
-      lastSavedAt: "legacy"
+      lastSavedAt: "legacy",
     };
 
     const migrated = migrateV1ToV2(v1);
@@ -60,7 +71,10 @@ describe("SaveSystem", () => {
     const storage = new MemoryStorage();
     const saveData = createSaveData(createInitialInventory());
     saveGame(saveData, storage);
-    saveGame({ ...saveData, player: { ...saveData.player, coins: 20 } }, storage);
+    saveGame(
+      { ...saveData, player: { ...saveData.player, coins: 20 } },
+      storage,
+    );
     storage.setItem("minewalker.save.v2", "{broken");
 
     expect(loadGame(storage)?.version).toBe(2);
@@ -77,10 +91,40 @@ describe("SaveSystem", () => {
         inventory: createInitialInventory(),
         unlockedAreas: ["area.beginnerMine"],
         settings: { sound: true, vibration: false },
-        lastSavedAt: "legacy"
-      })
+        lastSavedAt: "legacy",
+      }),
     );
 
     expect(loadGame(storage)?.player.level).toBe(2);
+  });
+
+  it("saves, validates, restores, and clears an interrupted run separately", () => {
+    const storage = new MemoryStorage();
+    const field = generateMinefield({
+      width: 4,
+      height: 4,
+      mineCount: 2,
+      safeRadius: 1,
+      seed: "resume",
+      startX: 1,
+      startY: 1,
+    });
+    saveRun(
+      {
+        areaId: "area.beginnerMine",
+        field,
+        player: { ...createInitialPlayer(), x: 1, y: 1 },
+        inventory: createInitialInventory(),
+        monsters: [],
+        defeatedMonsters: [],
+        bossDefeated: false,
+      },
+      storage,
+    );
+
+    expect(loadRun(storage)?.field.seed).toBe("resume");
+    expect(storage.getItem("minewalker.save.v2")).toBeNull();
+    clearRun(storage);
+    expect(loadRun(storage)).toBeUndefined();
   });
 });
