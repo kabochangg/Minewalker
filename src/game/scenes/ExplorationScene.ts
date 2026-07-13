@@ -37,6 +37,7 @@ import {
   tryMove,
   type MoveDirection,
 } from "../systems/MovementSystem";
+import { isPositionDiscovered } from "../systems/VisibilitySystem";
 import { addButton, addHudBar, COLORS, drawPixelMiner } from "./uiHelpers";
 
 type ActionMode = "mine" | "cool" | "disable" | "potion" | "bag";
@@ -65,11 +66,13 @@ const BOARD_X = 0;
 const BOARD_Y = 0;
 const WORLD_TOP = 112;
 const WORLD_HEIGHT = 538;
-const MOVE_DURATION = 135;
+const MOVE_DURATION = 90;
 const JOYSTICK_X = 68;
 const JOYSTICK_Y = 770;
 const JOYSTICK_RADIUS = 58;
-const JOYSTICK_DEAD_ZONE = 14;
+const JOYSTICK_DEAD_ZONE = 8;
+const TILE_CROP_X = 6;
+const TILE_CROP_WIDTH = 20;
 
 export class ExplorationScene extends Phaser.Scene {
   private field!: Minefield;
@@ -105,7 +108,7 @@ export class ExplorationScene extends Phaser.Scene {
     this.worldCamera = this.cameras.main;
     this.worldCamera.setViewport(0, WORLD_TOP, 390, WORLD_HEIGHT);
     this.worldCamera.setZoom(1.1);
-    this.worldCamera.setBackgroundColor("#0b0f12");
+    this.worldCamera.setBackgroundColor("#17120e");
     this.uiCamera = this.cameras.add(0, 0, 390, 844, false, "ui");
     this.uiCamera.transparent = true;
     const resumed = loadRun();
@@ -245,22 +248,25 @@ export class ExplorationScene extends Phaser.Scene {
   private drawBackdrop(): void {
     const graphics = this.add.graphics();
     this.tileObjects.push(graphics);
-    graphics.fillStyle(0x11100d);
+    graphics.fillStyle(0x211a13);
     graphics.fillRect(
       0,
       0,
       this.field.width * TILE_SIZE,
       this.field.height * TILE_SIZE,
     );
-    graphics.fillStyle(0x19140f);
-    graphics.fillRect(
-      0,
-      0,
-      this.field.width * TILE_SIZE,
-      this.field.height * TILE_SIZE,
-    );
-    graphics.fillStyle(this.getAreaGlow(), 0.13);
-    graphics.fillCircle(264, 330, 180);
+    graphics.fillStyle(0x30251a, 0.42);
+    for (let y = 18; y < this.field.height * TILE_SIZE; y += 54) {
+      for (
+        let x = 12 + ((y / 54) % 2) * 20;
+        x < this.field.width * TILE_SIZE;
+        x += 68
+      ) {
+        graphics.fillEllipse(x, y, 42, 20);
+      }
+    }
+    graphics.fillStyle(this.getAreaGlow(), 0.055);
+    graphics.fillEllipse(250, 350, 340, 250);
   }
 
   private drawTiles(): void {
@@ -274,7 +280,8 @@ export class ExplorationScene extends Phaser.Scene {
         ? this.add
             .image(x, y, key)
             .setOrigin(0)
-            .setDisplaySize(TILE_SIZE - 1, TILE_SIZE - 1)
+            .setCrop(TILE_CROP_X, 0, TILE_CROP_WIDTH, 32)
+            .setDisplaySize(TILE_SIZE, TILE_SIZE)
         : this.add
             .rectangle(
               x,
@@ -429,6 +436,9 @@ export class ExplorationScene extends Phaser.Scene {
 
   private drawMonsters(): void {
     for (const monster of this.monsters) {
+      if (!this.isMonsterDiscovered(monster)) {
+        continue;
+      }
       const x = BOARD_X + monster.tileX * TILE_SIZE + TILE_SIZE / 2;
       const y = BOARD_Y + monster.tileY * TILE_SIZE + TILE_SIZE / 2;
       const definition = getMonster(monster.id);
@@ -827,7 +837,7 @@ export class ExplorationScene extends Phaser.Scene {
     const monster = this.monsters.find(
       (candidate) => candidate.tileX === tile.x && candidate.tileY === tile.y,
     );
-    if (!monster) {
+    if (!monster || !this.isMonsterDiscovered(monster)) {
       return false;
     }
     if (!isAdjacent(this.player, tile)) {
@@ -884,6 +894,13 @@ export class ExplorationScene extends Phaser.Scene {
       }
     }
     return true;
+  }
+
+  private isMonsterDiscovered(monster: MonsterRuntime): boolean {
+    return isPositionDiscovered(this.field, this.player, {
+      x: monster.tileX,
+      y: monster.tileY,
+    });
   }
 
   private usePotion(): void {
