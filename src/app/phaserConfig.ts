@@ -11,10 +11,11 @@ import { PreloadScene } from "../game/scenes/PreloadScene";
 import { ResultScene } from "../game/scenes/ResultScene";
 import { SettingsScene } from "../game/scenes/SettingsScene";
 import { TitleScene } from "../game/scenes/TitleScene";
+import { GameFontScenePlugin } from "../game/presentation/GameFontScenePlugin";
 
 export function createGame(): Phaser.Game {
   const config: Phaser.Types.Core.GameConfig = {
-    type: Phaser.AUTO,
+    type: Phaser.CANVAS,
     parent: "game-root",
     backgroundColor: "#0a0f12",
     pixelArt: true,
@@ -25,6 +26,15 @@ export function createGame(): Phaser.Game {
       autoCenter: Phaser.Scale.CENTER_BOTH,
       width: 390,
       height: 844,
+    },
+    plugins: {
+      scene: [
+        {
+          key: "GameFontScenePlugin",
+          plugin: GameFontScenePlugin,
+          mapping: "gameFont",
+        },
+      ],
     },
     scene: [
       BootScene,

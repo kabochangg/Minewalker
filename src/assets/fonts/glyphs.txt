@@ -1,0 +1,4 @@
+鉱山 危険 処理 探索 拠点 壁 地雷 冷却 解除 素材 道具 耐久
+体力 スタミナ 装備 設定 続きから はじめから オフライン 更新
+0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz
+、。・：！？（）／％＋－

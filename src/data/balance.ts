@@ -1,4 +1,14 @@
 export const BALANCE = {
+  presentation: {
+    tileSize: 48,
+    fixedStepMs: 1_000 / 60,
+    maxCatchUpSteps: 3,
+    chunkSize: 8,
+    chunkOverscanTiles: 2,
+  },
+  persistence: {
+    saveCoalesceMs: 250,
+  },
   player: {
     maxHp: 100,
     maxStamina: 50,

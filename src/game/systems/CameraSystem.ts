@@ -63,3 +63,24 @@ export function screenToWorld(
     y: screenY / camera.zoom + camera.scrollY,
   };
 }
+
+/** フレーム時間に依存しない指数補間でカメラを目標へ近づける。 */
+export function smoothCameraView(
+  current: CameraView,
+  target: CameraView,
+  elapsedMs: number,
+  responsePerSecond = 12,
+): CameraView {
+  const alpha =
+    elapsedMs <= 0
+      ? 0
+      : 1 -
+        Math.exp(
+          -Math.max(0, responsePerSecond) * (Math.min(elapsedMs, 100) / 1_000),
+        );
+  return {
+    scrollX: current.scrollX + (target.scrollX - current.scrollX) * alpha,
+    scrollY: current.scrollY + (target.scrollY - current.scrollY) * alpha,
+    zoom: current.zoom + (target.zoom - current.zoom) * alpha,
+  };
+}

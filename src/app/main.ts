@@ -2,14 +2,33 @@ import { createGame } from "./phaserConfig";
 import "../ui/styles/global.css";
 import { registerSW } from "virtual:pwa-register";
 import { getGameState } from "../game/state/GameState";
-import { saveGame } from "../save/SaveSystem";
 import { PwaLifecycleController } from "./PwaLifecycleController";
+import { saveCoordinator } from "../save/saveCoordinator";
+import type {
+  ObjectCountSnapshot,
+  PerformanceSnapshot,
+} from "../game/presentation/PerformanceMonitor";
 
 const game = createGame();
 const pwaLifecycle = new PwaLifecycleController(
-  () => saveGame(getGameState()),
+  async () => {
+    saveCoordinator.markDirty("persistent", getGameState(), "pwaUpdate");
+    const result = await saveCoordinator.flushAll("pwaUpdate");
+    if (!result.ok) {
+      throw new Error(result.error ?? "更新前の保存に失敗しました");
+    }
+  },
   () => updateServiceWorker(true),
 );
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") {
+    void saveCoordinator.flushAll("hidden");
+  }
+});
+window.addEventListener("pagehide", () => {
+  void saveCoordinator.flushAll("pagehide");
+});
 
 /** 更新通知を表示し、現在の探索状態を守ったまま適用方法を選べるようにする。 */
 function showUpdateNotice(): void {
@@ -50,6 +69,11 @@ window.addEventListener("beforeinstallprompt", (event) => {
 });
 
 if (import.meta.env.VITE_E2E === "1") {
+  interface ExplorationPerformanceBridge {
+    resetPerformance(): void;
+    startPerformance(): void;
+    performanceSnapshot(): PerformanceSnapshot;
+  }
   const browserWindow = window as typeof window & {
     __minewalkerStartExploration?: () => void;
     __minewalkerActiveScene?: () => string | undefined;
@@ -58,6 +82,15 @@ if (import.meta.env.VITE_E2E === "1") {
       readonly notifyUpdate: () => void;
       readonly deferUpdate: () => void;
       readonly applyUpdate: () => Promise<boolean>;
+    };
+    __minewalkerE2E?: ExplorationPerformanceBridge;
+    __minewalkerPerformance?: {
+      reset(): void;
+      start(windowMs: number): void;
+      stop(): PerformanceSnapshot;
+      getObjectCounts(): ObjectCountSnapshot;
+      getFontStatus(): { readonly loaded: boolean; readonly family: string };
+      getSaveStatus(): ReturnType<typeof saveCoordinator.getStatus>;
     };
   };
   browserWindow.__minewalkerStartExploration = () => {
@@ -73,6 +106,33 @@ if (import.meta.env.VITE_E2E === "1") {
     notifyUpdate: showUpdateNotice,
     deferUpdate: () => pwaLifecycle.deferUpdate(),
     applyUpdate: () => pwaLifecycle.applyUpdate(),
+  };
+  browserWindow.__minewalkerPerformance = {
+    reset: () => browserWindow.__minewalkerE2E?.resetPerformance(),
+    start: () => browserWindow.__minewalkerE2E?.startPerformance(),
+    stop: () =>
+      browserWindow.__minewalkerE2E?.performanceSnapshot() ?? {
+        averageFps: 0,
+        frameDeltaP95Ms: 0,
+        inputToPresentP95Ms: 0,
+        stallsOver100Ms: 0,
+        sampleCount: 0,
+        objectCounts: { gameObjects: 0, texts: 0, activeChunks: 0 },
+      },
+    getObjectCounts: () =>
+      browserWindow.__minewalkerE2E?.performanceSnapshot().objectCounts ?? {
+        gameObjects: 0,
+        texts: 0,
+        activeChunks: 0,
+      },
+    getFontStatus: () => ({
+      loaded: document.fonts.check(
+        '400 16px "MinewalkerJP"',
+        "鉱山 危険 処理 0123456789",
+      ),
+      family: "MinewalkerJP",
+    }),
+    getSaveStatus: () => saveCoordinator.getStatus(),
   };
 }
 

@@ -5,6 +5,7 @@ import { generateMinefield, isAdjacent } from "../game/systems/MinefieldSystem";
 import {
   advanceContinuousMovement,
   canMoveTo,
+  consumeFixedSteps,
   directionFromAngle,
   MOVE_VECTORS,
   tryMove,
@@ -110,5 +111,12 @@ describe("eight-direction movement", () => {
     expect(result.gridPosition).toEqual({ x: 2, y: 3 });
     expect(result.position.x).toBeLessThan(3);
     expect(result.position.y).toBeGreaterThan(3);
+  });
+
+  it("固定ステップを最大3回に制限し補間率を返す", () => {
+    const frame = consumeFixedSteps(0, 80, 1_000 / 60, 3);
+    expect(frame.stepCount).toBe(3);
+    expect(frame.interpolation).toBeGreaterThanOrEqual(0);
+    expect(frame.interpolation).toBeLessThanOrEqual(1);
   });
 });

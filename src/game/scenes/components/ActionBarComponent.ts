@@ -7,6 +7,10 @@ export type ExplorationActionMode =
 /** 44px以上の探索アクション操作を描画する。 */
 export class ActionBarComponent {
   readonly #objects: Phaser.GameObjects.GameObject[] = [];
+  readonly #selection = new Map<
+    ExplorationActionMode,
+    Phaser.GameObjects.Rectangle
+  >();
 
   /** 下部アクションバーを生成する。 */
   constructor(
@@ -22,10 +26,16 @@ export class ActionBarComponent {
       ["bag", "袋"],
     ];
     actions.forEach(([mode, label], index) => {
+      const x = 35 + index * 64;
+      const selected = scene.add
+        .rectangle(x, 827, 42, 3, COLORS.gold)
+        .setVisible(false);
+      this.#selection.set(mode, selected);
+      this.#objects.push(selected);
       this.#objects.push(
         addButton(
           scene,
-          35 + index * 64,
+          x,
           800,
           58,
           52,
@@ -35,6 +45,13 @@ export class ActionBarComponent {
         ),
       );
     });
+  }
+
+  /** 選択中のアクションだけを強調表示する。 */
+  update(selectedMode: ExplorationActionMode): void {
+    for (const [mode, indicator] of this.#selection) {
+      indicator.setVisible(mode === selectedMode);
+    }
   }
 
   /** 所有するGameObjectを破棄する。 */

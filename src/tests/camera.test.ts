@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   calculateCameraView,
   screenToWorld,
+  smoothCameraView,
   worldToScreen,
 } from "../game/systems/CameraSystem";
 
@@ -56,5 +57,15 @@ describe("CameraSystem", () => {
       zoom: 1,
     });
     expect(world).toEqual({ x: 144, y: 192 });
+  });
+
+  it("経過時間に応じてカメラを滑らかに追従させる", () => {
+    const current = { scrollX: 0, scrollY: 0, zoom: 1 };
+    const target = { scrollX: 100, scrollY: 50, zoom: 1.2 };
+    const short = smoothCameraView(current, target, 16);
+    const long = smoothCameraView(current, target, 32);
+    expect(short.scrollX).toBeGreaterThan(0);
+    expect(long.scrollX).toBeGreaterThan(short.scrollX);
+    expect(long.scrollX).toBeLessThan(target.scrollX);
   });
 });

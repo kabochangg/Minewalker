@@ -5,7 +5,9 @@ import {
   getMonsterAssetKey,
   type TileVisual,
 } from "../../assets/assetCatalog";
+import { GAME_FONT_FAMILY } from "../../assets/fontCatalog";
 import { getArea } from "../../data/areas";
+import { BALANCE } from "../../data/balance";
 import { DIFFICULTIES } from "../../data/difficulties";
 import { getItemName } from "../../data/items";
 import { getMonster, type MonsterId } from "../../data/monsters";
@@ -14,7 +16,9 @@ import {
   loadExplorationState,
   loadRun,
   saveRun,
+  type LegacyRunInput,
 } from "../../save/RunSaveSystem";
+import { saveCoordinator } from "../../save/saveCoordinator";
 import { loadGame } from "../../save/SaveSystem";
 import type { DeathCache } from "../components/progressionComponents";
 import type { ToolConditionComponent } from "../components/toolComponents";
@@ -28,6 +32,7 @@ import {
   setGameState,
 } from "../state/GameState";
 import { ExplorationCoordinator } from "../application/ExplorationCoordinator";
+import { PerformanceMonitor } from "../presentation/PerformanceMonitor";
 import { attackMonster, type CombatantState } from "../systems/CombatSystem";
 import { rollWeightedDrop } from "../systems/DropSystem";
 import { playFeedback, type FeedbackCue } from "../systems/FeedbackSystem";
@@ -48,6 +53,7 @@ import { isAdjacent } from "../systems/MinefieldSystem";
 import { mineTile } from "../systems/MiningSystem";
 import {
   advanceContinuousMovement,
+  consumeFixedSteps,
   directionFromAngle,
   MOVE_VECTORS,
   tryMove,
@@ -98,6 +104,10 @@ interface ExplorationE2EBridge {
   readonly triggerDefeat: () => void;
   readonly recoverLatestDeathCache: () => void;
   readonly toggleRun: () => void;
+  readonly resetPerformance: () => void;
+  readonly startPerformance: () => void;
+  readonly measureInput: () => void;
+  readonly performanceSnapshot: () => ReturnType<PerformanceMonitor["stop"]>;
   readonly snapshot: () => {
     readonly usedCapacity: number;
     readonly cleared: boolean;
@@ -162,13 +172,20 @@ export class ExplorationScene extends Phaser.Scene {
   private generatedStartSafe = true;
   private readonly tileObjects: Phaser.GameObjects.GameObject[] = [];
   private readonly hudObjects: Phaser.GameObjects.GameObject[] = [];
+  private readonly flagIcons = new Map<string, Phaser.GameObjects.Container>();
+  private messageText?: Phaser.GameObjects.Text;
   private readonly discoveredMonsterKeys = new Set<string>();
+  private movementAccumulatorMs = 0;
+  private inputReceiptSequence = 0;
+  private activeChunkKey = "";
+  private readonly performanceMonitor = new PerformanceMonitor();
 
   constructor() {
     super("ExplorationScene");
   }
 
   create(): void {
+    this.performanceMonitor.start();
     this.worldCamera = this.cameras.main;
     this.worldCamera.setViewport(0, WORLD_TOP, 390, WORLD_HEIGHT);
     this.worldCamera.setZoom(1.1);
@@ -211,14 +228,25 @@ export class ExplorationScene extends Phaser.Scene {
     this.playerPosition = resumed?.playerPosition ?? this.getPlayerCenter();
     this.input.on("pointermove", this.handleJoystickMove, this);
     this.input.on("pointerup", this.releaseJoystick, this);
+    this.input.on("pointerup", this.handleWorldPointerUp, this);
     this.input.keyboard?.on("keydown", this.handleKeyboardDown);
     this.input.keyboard?.on("keyup", this.handleKeyboardUp);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.shutdownInput, this);
     this.render();
+    this.saveRunState(true);
   }
 
   update(_time: number, delta: number): void {
-    const activeDelta = Math.min(delta, 34);
+    this.performanceMonitor.recordFrame();
+    const fixedFrame = consumeFixedSteps(
+      this.movementAccumulatorMs,
+      Math.min(delta, 100),
+      BALANCE.presentation.fixedStepMs,
+      BALANCE.presentation.maxCatchUpSteps,
+    );
+    this.movementAccumulatorMs = fixedFrame.remainderMs;
+    const activeDelta = fixedFrame.stepCount * fixedFrame.stepMs;
+    if (activeDelta <= 0) return;
     if (!this.heldDirection && !this.failed && !this.cleared) {
       const recovered = recoverStamina(this.player, activeDelta, true);
       this.player = { ...this.player, stamina: recovered.stamina };
@@ -275,6 +303,11 @@ export class ExplorationScene extends Phaser.Scene {
       this.playerSprite.y = worldY;
     }
     this.playerLighting.forEach((light) => light.setPosition(worldX, worldY));
+    const chunkKey = `${Math.floor(this.player.x / BALANCE.presentation.chunkSize)},${Math.floor(this.player.y / BALANCE.presentation.chunkSize)}`;
+    if (chunkKey !== this.activeChunkKey) {
+      this.activeChunkKey = chunkKey;
+      this.render();
+    }
   }
 
   private createScenarioField(): Minefield {
@@ -360,6 +393,7 @@ export class ExplorationScene extends Phaser.Scene {
 
   private render(): void {
     this.clearObjects(this.tileObjects);
+    this.flagIcons.clear();
     this.clearObjects(this.hudObjects);
     this.drawBackdrop();
     this.drawTiles();
@@ -415,23 +449,55 @@ export class ExplorationScene extends Phaser.Scene {
   }
 
   private drawTiles(): void {
+    const graphics = this.add.graphics();
+    const theme = getAreaVisualTheme(getArea(getSelectedAreaId()).theme);
+    this.tileObjects.push(graphics);
     for (const tile of this.field.tiles) {
+      if (!this.isTileInActiveWindow(tile)) continue;
       const x = BOARD_X + tile.x * TILE_SIZE;
       const y = BOARD_Y + tile.y * TILE_SIZE;
       const visual = this.getTileVisual(tile);
-      const hitTarget =
+      const variant = getTileVisualVariant(
+        this.field.seed,
+        tile.x,
+        tile.y,
+        tile.state,
+      );
+      const fill =
         visual === "wall"
-          ? this.drawNaturalWallTile(x, y, tile)
-          : this.drawNaturalFloorTile(x, y, tile, visual);
-      hitTarget.setInteractive({ useHandCursor: true });
-      hitTarget.on("pointerup", (pointer: Phaser.Input.Pointer) => {
-        if (pointer.getDuration() > 450) {
-          this.handleFlag(tile);
-          return;
-        }
-        this.handleTileInteraction(tile);
-      });
-      this.tileObjects.push(hitTarget);
+          ? theme.wall[variant % theme.wall.length]
+          : tile.state === "blocked"
+            ? 0x151515
+            : theme.floor[variant % theme.floor.length];
+      graphics.fillStyle(
+        isAdjacent(this.player, tile) && visual === "wall"
+          ? lightenColor(fill, 18)
+          : fill,
+        1,
+      );
+      graphics.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+      graphics.lineStyle(1, VISUAL_TOKENS.colors.rockOutline, 0.72);
+      graphics.strokeRect(x, y, TILE_SIZE, TILE_SIZE);
+      if (visual === "wall") {
+        graphics.fillStyle(theme.wallHighlight, 0.45);
+        graphics.fillRoundedRect(
+          x + 5 + (variant % 3) * 3,
+          y + 7,
+          14 + (variant % 2) * 5,
+          9,
+          3,
+        );
+        graphics.fillStyle(theme.crack, 0.65);
+        graphics.fillRect(x + 12 + variant * 2, y + 25, 2, 12);
+      } else {
+        graphics.fillStyle(theme.wallHighlight, 0.18);
+        graphics.fillRect(
+          x + 7 + (variant % 4) * 6,
+          y + 9 + (variant % 3) * 8,
+          5,
+          3,
+        );
+      }
 
       if (tile.isRevealed && tile.adjacentMineCount > 0) {
         this.tileObjects.push(
@@ -441,7 +507,7 @@ export class ExplorationScene extends Phaser.Scene {
               y + TILE_SIZE / 2,
               String(tile.adjacentMineCount),
               {
-                fontFamily: "sans-serif",
+                fontFamily: GAME_FONT_FAMILY,
                 fontSize: "22px",
                 fontStyle: "bold",
                 color: this.getNumberColor(tile.adjacentMineCount),
@@ -451,11 +517,9 @@ export class ExplorationScene extends Phaser.Scene {
         );
       }
       if (tile.mark === "flag") {
-        this.tileObjects.push(
-          this.add
-            .text(x + 17, y + 16, "⚑", { fontSize: "20px", color: "#ff563f" })
-            .setOrigin(0.5),
-        );
+        const icon = drawGameIcon(this, x + 24, y + 24, "flag", 0xff563f);
+        this.flagIcons.set(`${tile.x},${tile.y}`, icon);
+        this.tileObjects.push(icon);
       }
       if (
         tile.hasMine &&
@@ -463,45 +527,45 @@ export class ExplorationScene extends Phaser.Scene {
           tile.state === "cooledMine" ||
           tile.state === "disabledMine")
       ) {
-        const symbol =
+        const icon: GameIcon =
           tile.state === "cooledMine"
-            ? "❄"
+            ? "snow"
             : tile.state === "disabledMine"
-              ? "✓"
-              : "●";
+              ? "check"
+              : "mine";
         this.tileObjects.push(
-          this.add
-            .text(x + 16, y + 16, symbol, {
-              fontSize: "18px",
-              color: "#ffd2c2",
-            })
-            .setOrigin(0.5),
+          drawGameIcon(this, x + 24, y + 24, icon, 0xffd2c2),
         );
       }
       if (tile.state === "exit") {
         this.tileObjects.push(
-          this.add
-            .text(x + 16, y + 16, "▣", { fontSize: "21px", color: "#f5b83f" })
-            .setOrigin(0.5),
+          drawGameIcon(this, x + 24, y + 24, "exit", 0xf5b83f),
         );
       }
     }
     for (const cache of this.deathCaches) {
-      const marker = this.add
-        .text(
-          BOARD_X + (cache.position.x + 0.5) * TILE_SIZE,
-          BOARD_Y + (cache.position.y + 0.5) * TILE_SIZE,
-          "✚",
-          {
-            fontSize: "24px",
-            color: "#ff6b57",
-            stroke: "#1c1510",
-            strokeThickness: 3,
-          },
-        )
-        .setOrigin(0.5);
+      const marker = drawGameIcon(
+        this,
+        BOARD_X + (cache.position.x + 0.5) * TILE_SIZE,
+        BOARD_Y + (cache.position.y + 0.5) * TILE_SIZE,
+        "recovery",
+        0xff6b57,
+      );
       this.tileObjects.push(marker);
     }
+  }
+
+  /** 現在の表示範囲と余白に含まれるタイルだけを描画対象にする。 */
+  private isTileInActiveWindow(tile: Tile): boolean {
+    const overscan = BALANCE.presentation.chunkOverscanTiles;
+    const halfColumns = Math.ceil(390 / this.worldCamera.zoom / TILE_SIZE / 2);
+    const halfRows = Math.ceil(
+      WORLD_HEIGHT / this.worldCamera.zoom / TILE_SIZE / 2,
+    );
+    return (
+      Math.abs(tile.x - this.player.x) <= halfColumns + overscan &&
+      Math.abs(tile.y - this.player.y) <= halfRows + overscan
+    );
   }
 
   private drawNaturalWallTile(
@@ -788,6 +852,25 @@ export class ExplorationScene extends Phaser.Scene {
       toggleRun: () => {
         this.running = !this.running;
       },
+      resetPerformance: () => this.performanceMonitor.reset(),
+      startPerformance: () => this.performanceMonitor.start(),
+      measureInput: () => {
+        const receiptId = `e2e-${++this.inputReceiptSequence}`;
+        this.performanceMonitor.recordInput(receiptId);
+        requestAnimationFrame(() =>
+          this.performanceMonitor.recordPresented(receiptId),
+        );
+      },
+      performanceSnapshot: () => {
+        this.performanceMonitor.setObjectCounts({
+          gameObjects: this.children.list.length,
+          texts: this.children.list.filter(
+            (object) => object instanceof Phaser.GameObjects.Text,
+          ).length,
+          activeChunks: 1,
+        });
+        return this.performanceMonitor.stop();
+      },
       snapshot: () => ({
         usedCapacity: getUsedCapacity(this.inventory),
         cleared: this.cleared,
@@ -859,7 +942,7 @@ export class ExplorationScene extends Phaser.Scene {
         body.setAlpha(0).setScale(0.72);
         const alert = this.add
           .text(x, y - 28, "!", {
-            fontFamily: "system-ui, sans-serif",
+            fontFamily: GAME_FONT_FAMILY,
             fontSize: "22px",
             color: "#ffe08a",
             fontStyle: "bold",
@@ -1002,6 +1085,7 @@ export class ExplorationScene extends Phaser.Scene {
         wordWrap: { width: 270 },
       })
       .setOrigin(0.5);
+    this.messageText = text;
     this.hudObjects.push(box, text);
   }
 
@@ -1245,10 +1329,12 @@ export class ExplorationScene extends Phaser.Scene {
   private shutdownInput(): void {
     this.input.off("pointermove", this.handleJoystickMove, this);
     this.input.off("pointerup", this.releaseJoystick, this);
+    this.input.off("pointerup", this.handleWorldPointerUp, this);
     this.input.keyboard?.off("keydown", this.handleKeyboardDown);
     this.input.keyboard?.off("keyup", this.handleKeyboardUp);
     this.pressedKeys.clear();
     this.worldCamera.stopFollow();
+    void saveCoordinator.flushAll("sceneShutdown");
   }
 
   private stopContinuousMovement(): void {
@@ -1260,8 +1346,8 @@ export class ExplorationScene extends Phaser.Scene {
     this.render();
   }
 
-  private saveRunState(): void {
-    saveRun({
+  private saveRunState(immediate = false): void {
+    const snapshot: LegacyRunInput = {
       areaId: getSelectedAreaId(),
       field: this.field,
       player: this.player,
@@ -1273,7 +1359,43 @@ export class ExplorationScene extends Phaser.Scene {
       difficultyId: getGameState().selectedDifficulty,
       tools: [this.toolCondition],
       deathCaches: this.deathCaches,
-    });
+    };
+    if (immediate) {
+      saveRun(snapshot);
+      return;
+    }
+    saveCoordinator.markDirty("run", snapshot, "explorationAction");
+  }
+
+  /** 単一のワールド入力をタイル操作へ変換する。 */
+  private handleWorldPointerUp(pointer: Phaser.Input.Pointer): void {
+    if (
+      pointer.y < WORLD_TOP ||
+      pointer.y > WORLD_TOP + WORLD_HEIGHT ||
+      this.joystickPointerId === pointer.id
+    ) {
+      return;
+    }
+    const world = this.worldCamera.getWorldPoint(pointer.x, pointer.y);
+    const tile = getTile(
+      this.field,
+      Math.floor((world.x - BOARD_X) / TILE_SIZE),
+      Math.floor((world.y - BOARD_Y) / TILE_SIZE),
+    );
+    if (!tile) return;
+    const receiptId = `pointer-${++this.inputReceiptSequence}`;
+    this.performanceMonitor.recordInput(receiptId);
+    if (pointer.getDuration() > 450) {
+      this.handleFlag(tile);
+      requestAnimationFrame(() =>
+        this.performanceMonitor.recordPresented(receiptId),
+      );
+      return;
+    }
+    this.handleTileInteraction(tile);
+    requestAnimationFrame(() =>
+      this.performanceMonitor.recordPresented(receiptId),
+    );
   }
 
   private handleTileInteraction(tile: Tile): void {
@@ -1381,7 +1503,25 @@ export class ExplorationScene extends Phaser.Scene {
     this.field = toggleFlag(this.field, tile);
     this.message =
       tile.mark === "flag" ? "フラグを外しました" : "地雷候補にマークしました";
-    this.render();
+    const key = `${tile.x},${tile.y}`;
+    const existing = this.flagIcons.get(key);
+    const current = getTile(this.field, tile.x, tile.y);
+    if (existing) {
+      existing.setVisible(current?.mark === "flag");
+    } else if (current?.mark === "flag" && this.isTileInActiveWindow(current)) {
+      const icon = drawGameIcon(
+        this,
+        BOARD_X + current.x * TILE_SIZE + TILE_SIZE / 2,
+        BOARD_Y + current.y * TILE_SIZE + TILE_SIZE / 2,
+        "flag",
+        0xff563f,
+      );
+      this.flagIcons.set(key, icon);
+      this.tileObjects.push(icon);
+      this.uiCamera.ignore(icon);
+    }
+    this.messageText?.setText(this.message);
+    this.saveRunState();
   }
 
   private tryAttackMonster(tile: Tile): boolean {
@@ -1462,7 +1602,7 @@ export class ExplorationScene extends Phaser.Scene {
   }
 
   private claimExitCheckpoint(): void {
-    this.saveRunState();
+    this.saveRunState(true);
     const exploration = loadExplorationState();
     if (!exploration || typeof localStorage === "undefined") return;
     const checkpoint = exploration.checkpoints[0];
@@ -1499,7 +1639,7 @@ export class ExplorationScene extends Phaser.Scene {
 
   private commitDeath(): void {
     if (this.failed) return;
-    this.saveRunState();
+    this.saveRunState(true);
     const exploration = loadExplorationState();
     if (exploration && typeof localStorage !== "undefined") {
       const coordinator = new ExplorationCoordinator(exploration, {

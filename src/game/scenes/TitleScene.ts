@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import { getRouteState, setRouteState } from "../../app/routeState";
 import { ASSET_KEYS } from "../../assets/assetCatalog";
+import { GAME_FONT_FAMILY } from "../../assets/fontCatalog";
 import { clearRun, loadRun } from "../../save/RunSaveSystem";
 import { resetGamePreservingPreferences } from "../../save/SaveSystem";
 import { getGameState, setGameState } from "../state/GameState";
@@ -17,7 +18,7 @@ export class TitleScene extends Phaser.Scene {
     this.drawMineBackdrop();
     this.add
       .text(199, 154, "Minewalker", {
-        fontFamily: "system-ui, sans-serif",
+        fontFamily: GAME_FONT_FAMILY,
         fontSize: "50px",
         fontStyle: "bold",
         color: "#4a260d",
@@ -25,7 +26,7 @@ export class TitleScene extends Phaser.Scene {
       .setOrigin(0.5);
     this.add
       .text(195, 150, "Minewalker", {
-        fontFamily: "system-ui, sans-serif",
+        fontFamily: GAME_FONT_FAMILY,
         fontSize: "50px",
         fontStyle: "bold",
         color: "#ffb13b",
@@ -35,7 +36,7 @@ export class TitleScene extends Phaser.Scene {
       .setOrigin(0.5);
     this.add
       .text(195, 198, "マインウォーカー", {
-        fontFamily: "sans-serif",
+        fontFamily: GAME_FONT_FAMILY,
         fontSize: "22px",
         fontStyle: "bold",
         color: COLORS.text,

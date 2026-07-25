@@ -11,9 +11,12 @@
     "test:watch": "vitest",
     "lint": "eslint .",
     "format": "prettier --check .",
-    "e2e": "powershell -ExecutionPolicy Bypass -File scripts/run-e2e.ps1"
+    "e2e": "powershell -ExecutionPolicy Bypass -File scripts/run-e2e.ps1",
+    "verify:encoding": "node scripts/verify-encoding.mjs",
+    "e2e:performance": "powershell -ExecutionPolicy Bypass -File scripts/run-e2e.ps1 --grep performance"
   },
   "dependencies": {
+    "@fontsource/noto-sans-jp": "^5.2.8",
     "phaser": "^3.90.0",
     "seedrandom": "^3.0.5",
     "vite-plugin-pwa": "^1.0.3",

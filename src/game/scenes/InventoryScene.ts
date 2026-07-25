@@ -1,4 +1,5 @@
 import Phaser from "phaser";
+import { GAME_FONT_FAMILY } from "../../assets/fontCatalog";
 import { getItemName, type ItemId } from "../../data/items";
 import { discardItem, getGameState } from "../state/GameState";
 import { getUsedCapacity } from "../systems/InventorySystem";
@@ -119,7 +120,7 @@ export class InventoryScene extends Phaser.Scene {
     const panel = addPanel(this, 195, 422, 310, 220);
     const title = this.add
       .text(195, 365, "素材を破棄しますか？", {
-        fontFamily: "system-ui, sans-serif",
+        fontFamily: GAME_FONT_FAMILY,
         fontSize: "20px",
         fontStyle: "bold",
         color: COLORS.text,
@@ -127,7 +128,7 @@ export class InventoryScene extends Phaser.Scene {
       .setOrigin(0.5);
     const detail = this.add
       .text(195, 410, `${getItemName(itemId)}を1個破棄します。`, {
-        fontFamily: "system-ui, sans-serif",
+        fontFamily: GAME_FONT_FAMILY,
         fontSize: "14px",
         color: COLORS.muted,
       })

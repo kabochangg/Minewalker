@@ -13,6 +13,8 @@ import type {
   ExplorationState,
   SystemResult,
 } from "../state/ExplorationState";
+import type { RenderPatch } from "../presentation/RenderPatch";
+import { buildRenderPatch } from "../presentation/RenderPatchBuilder";
 import { claimCheckpoint } from "../systems/CheckpointSystem";
 import {
   createDeathTransition,
@@ -41,6 +43,7 @@ export class ExplorationCoordinator {
   readonly #listeners = new Set<(events: readonly DomainEvent[]) => void>();
   #active = true;
   #recoveryRequired = false;
+  #renderRevision = 0;
 
   /** 初期状態と任意の保存依存を設定する。 */
   constructor(
@@ -82,6 +85,24 @@ export class ExplorationCoordinator {
       for (const listener of this.#listeners) listener(result.events);
     }
     return result;
+  }
+
+  /** コマンド結果と同じ更新に対応する描画差分を返す。 */
+  dispatchWithPatch(
+    command: ExplorationCommand,
+    inputReceiptId?: string,
+  ): SystemResult & { readonly patch: RenderPatch } {
+    const previous = this.#state;
+    const result = this.dispatch(command);
+    this.#renderRevision += 1;
+    return {
+      ...result,
+      patch: buildRenderPatch(previous, result.state, {
+        revision: this.#renderRevision,
+        events: result.events,
+        ...(inputReceiptId ? { inputReceiptId } : {}),
+      }),
+    };
   }
 
   /** HP 0の状態を死亡トランザクションとして確定する。 */

@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { expectJapaneseFontReady } from "./helpers/fontAssertions";
 
 type E2EDirection =
   | "up"
@@ -24,6 +25,7 @@ interface ExplorationE2EBridge {
   triggerDefeat(): void;
   recoverLatestDeathCache(): void;
   toggleRun(): void;
+  measureInput(): void;
   snapshot(): {
     usedCapacity: number;
     cleared: boolean;
@@ -50,6 +52,24 @@ interface PwaE2EBridge {
   applyUpdate(): Promise<boolean>;
 }
 
+interface PerformanceE2EBridge {
+  reset(): void;
+  start(windowMs: number): void;
+  stop(): {
+    averageFps: number;
+    frameDeltaP95Ms: number;
+    inputToPresentP95Ms: number;
+    stallsOver100Ms: number;
+    sampleCount: number;
+    objectCounts: {
+      gameObjects: number;
+      texts: number;
+      activeChunks: number;
+    };
+  };
+  getFontStatus(): { loaded: boolean; family: string };
+}
+
 async function clickGamePoint(
   page: import("@playwright/test").Page,
   x: number,
@@ -69,9 +89,23 @@ async function openFreshTitle(
   await page.goto("/");
   const canvas = page.locator("canvas");
   await expect(canvas).toBeVisible();
-  await page.waitForTimeout(250);
+  await waitForActiveScene(page, "TitleScene");
   await clickGamePoint(page, 195, 548);
   await page.waitForTimeout(200);
+}
+
+async function waitForActiveScene(
+  page: import("@playwright/test").Page,
+  sceneKey: string,
+): Promise<void> {
+  await page.waitForFunction((expected) => {
+    const active = (
+      window as typeof window & {
+        __minewalkerActiveScene?: () => string | undefined;
+      }
+    ).__minewalkerActiveScene;
+    return active?.() === expected;
+  }, sceneKey);
 }
 
 async function dismissPwaNotice(
@@ -118,6 +152,65 @@ test("title to exploration smoke flow", async ({ page }) => {
   // This only guards against a blank capture; screen-specific layout is
   // exercised by the visual-baseline test below.
   expect(screenshot.length).toBeGreaterThan(1_000);
+});
+
+test("self-hosted Japanese font is ready on every mobile viewport", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await expect(page.locator("canvas")).toBeVisible();
+  await expectJapaneseFontReady(page);
+  const fontStatus = await page.evaluate(() =>
+    (
+      window as typeof window & {
+        __minewalkerPerformance: PerformanceE2EBridge;
+      }
+    ).__minewalkerPerformance.getFontStatus(),
+  );
+  expect(fontStatus).toEqual({ loaded: true, family: "MinewalkerJP" });
+});
+
+test("performance contract remains stable after 100 exploration actions", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "mobile-390");
+  await page.goto("/?e2e=1");
+  await page.waitForFunction(() => "__minewalkerStartExploration" in window);
+  await page.evaluate(() => {
+    (
+      window as typeof window & { __minewalkerStartExploration: () => void }
+    ).__minewalkerStartExploration();
+  });
+  await page.waitForFunction(
+    () => "__minewalkerE2E" in window && "__minewalkerPerformance" in window,
+  );
+  await page.evaluate(() => {
+    const target = window as typeof window & {
+      __minewalkerE2E: ExplorationE2EBridge;
+      __minewalkerPerformance: PerformanceE2EBridge;
+    };
+    target.__minewalkerPerformance.reset();
+    target.__minewalkerPerformance.start(3_000);
+    for (let index = 0; index < 100; index += 1) {
+      target.__minewalkerE2E.markMine();
+    }
+    target.__minewalkerE2E.inputDirection("right");
+    target.__minewalkerE2E.measureInput();
+  });
+  await page.waitForTimeout(3_000);
+  const snapshot = await page.evaluate(() =>
+    (
+      window as typeof window & {
+        __minewalkerPerformance: PerformanceE2EBridge;
+      }
+    ).__minewalkerPerformance.stop(),
+  );
+  expect(snapshot.averageFps).toBeGreaterThanOrEqual(55);
+  expect(snapshot.frameDeltaP95Ms).toBeLessThanOrEqual(25);
+  expect(snapshot.inputToPresentP95Ms).toBeGreaterThan(0);
+  expect(snapshot.inputToPresentP95Ms).toBeLessThanOrEqual(100);
+  expect(snapshot.stallsOver100Ms).toBe(0);
+  expect(snapshot.objectCounts.gameObjects).toBeLessThan(1_000);
 });
 
 test("in-game menu can return to home", async ({ page }) => {
@@ -176,6 +269,7 @@ test("complete exploration loop mines, treats a mine, gains an item, exits, and 
     return saved.statistics?.clears === 1;
   });
   await clickGamePoint(page, 118, 720);
+  await waitForActiveScene(page, "HomeScene");
   await expect(page.locator("canvas")).toBeVisible();
   const saved = await page.evaluate(() =>
     localStorage.getItem("minewalker.save.v3"),
@@ -357,10 +451,13 @@ test("new game cancellation preserves progress and confirmation preserves prefer
     localStorage.setItem("minewalker.save.v3", JSON.stringify(save));
   });
   await page.reload();
-  await page.waitForTimeout(200);
+  await waitForActiveScene(page, "TitleScene");
   await clickGamePoint(page, 195, 570);
+  await page.waitForTimeout(80);
   await clickGamePoint(page, 195, 482);
+  await page.waitForTimeout(80);
   await clickGamePoint(page, 122, 500);
+  await page.waitForTimeout(80);
   expect(
     await page.evaluate(() => {
       const raw = localStorage.getItem("minewalker.save.v3");
@@ -370,7 +467,9 @@ test("new game cancellation preserves progress and confirmation preserves prefer
     }),
   ).toBe(77);
   await clickGamePoint(page, 195, 482);
+  await page.waitForTimeout(80);
   await clickGamePoint(page, 268, 500);
+  await page.waitForTimeout(80);
   expect(
     await page.evaluate(() => {
       const raw = localStorage.getItem("minewalker.save.v3");
@@ -398,9 +497,11 @@ test("difficulty and input mode selections persist", async ({ page }) => {
     }),
   ).toBe("hard");
   await page.goto("/");
-  await page.waitForTimeout(200);
+  await waitForActiveScene(page, "TitleScene");
   await clickGamePoint(page, 308, 684);
+  await waitForActiveScene(page, "SettingsScene");
   await clickGamePoint(page, 195, 550);
+  await page.waitForTimeout(80);
   expect(
     await page.evaluate(() => {
       const raw = localStorage.getItem("minewalker.save.v3");
@@ -411,6 +512,7 @@ test("difficulty and input mode selections persist", async ({ page }) => {
     }),
   ).toBe("touchTap");
   await clickGamePoint(page, 195, 550);
+  await page.waitForTimeout(80);
   expect(
     await page.evaluate(() => {
       const raw = localStorage.getItem("minewalker.save.v3");
@@ -421,6 +523,7 @@ test("difficulty and input mode selections persist", async ({ page }) => {
     }),
   ).toBe("keyboard");
   await clickGamePoint(page, 195, 550);
+  await page.waitForTimeout(80);
   expect(
     await page.evaluate(() => {
       const raw = localStorage.getItem("minewalker.save.v3");

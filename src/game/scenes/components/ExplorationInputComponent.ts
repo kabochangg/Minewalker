@@ -6,6 +6,10 @@ export class ExplorationInputComponent {
   readonly #scene: Phaser.Scene;
   readonly #dispatch: (command: ExplorationCommand) => void;
   readonly #keys: Record<string, Phaser.Input.Keyboard.Key>;
+  #worldPointerBound = false;
+  #worldMode: () => "mine" | "mark" | "dispose" | "attack" = () => "mine";
+  #receiptSequence = 0;
+  #worldPointerHandler?: (pointer: Phaser.Input.Pointer) => void;
 
   /** Sceneとコマンド送信先を関連付ける。 */
   constructor(
@@ -49,9 +53,37 @@ export class ExplorationInputComponent {
     if (mode === "attack") this.#dispatch({ type: "attack", x, y });
   }
 
+  /** ワールド全体へ1つだけポインターリスナーを登録する。 */
+  bindWorldPointer(
+    camera: Phaser.Cameras.Scene2D.Camera,
+    tileSize: number,
+    mode: () => "mine" | "mark" | "dispose" | "attack",
+    onReceipt?: (receiptId: string) => void,
+  ): void {
+    if (this.#worldPointerBound) return;
+    this.#worldPointerBound = true;
+    this.#worldMode = mode;
+    this.#worldPointerHandler = (pointer: Phaser.Input.Pointer) => {
+      const point = camera.getWorldPoint(pointer.x, pointer.y);
+      const receiptId = `input-${++this.#receiptSequence}`;
+      onReceipt?.(receiptId);
+      this.dispatchTile(
+        this.#worldMode(),
+        Math.floor(point.x / tileSize),
+        Math.floor(point.y / tileSize),
+      );
+    };
+    this.#scene.input.on("pointerup", this.#worldPointerHandler);
+  }
+
   /** Scene終了時に保有する入力参照を解除する。 */
   destroy(): void {
     for (const key of Object.values(this.#keys)) key.destroy();
     this.#scene.input.keyboard?.resetKeys();
+    if (this.#worldPointerBound && this.#worldPointerHandler) {
+      this.#scene.input.off("pointerup", this.#worldPointerHandler);
+      this.#worldPointerBound = false;
+      this.#worldPointerHandler = undefined;
+    }
   }
 }

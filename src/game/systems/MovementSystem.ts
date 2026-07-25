@@ -31,6 +31,40 @@ export interface ContinuousMoveResult {
   readonly moved: boolean;
 }
 
+/** 固定更新へ変換したフレームの情報。 */
+export interface FixedStepFrame {
+  readonly stepCount: number;
+  readonly stepMs: number;
+  readonly remainderMs: number;
+  readonly interpolation: number;
+  readonly droppedMs: number;
+}
+
+/** 可変フレーム時間を上限付きの固定更新回数へ変換する。 */
+export function consumeFixedSteps(
+  accumulatedMs: number,
+  elapsedMs: number,
+  stepMs = 1_000 / 60,
+  maximumSteps = 3,
+): FixedStepFrame {
+  const safeStepMs = Math.max(1, stepMs);
+  const safeMaximumSteps = Math.max(1, Math.floor(maximumSteps));
+  const totalMs = Math.max(0, accumulatedMs) + Math.max(0, elapsedMs);
+  const availableSteps = Math.floor(totalMs / safeStepMs);
+  const stepCount = Math.min(safeMaximumSteps, availableSteps);
+  const consumedMs = stepCount * safeStepMs;
+  const uncappedRemainder = totalMs - consumedMs;
+  const maximumRemainder = safeStepMs * safeMaximumSteps;
+  const remainderMs = Math.min(uncappedRemainder, maximumRemainder);
+  return {
+    stepCount,
+    stepMs: safeStepMs,
+    remainderMs,
+    interpolation: Math.min(1, remainderMs / safeStepMs),
+    droppedMs: Math.max(0, uncappedRemainder - remainderMs),
+  };
+}
+
 export const MOVE_VECTORS: Readonly<Record<MoveDirection, GridPosition>> = {
   up: { x: 0, y: -1 },
   upRight: { x: 1, y: -1 },

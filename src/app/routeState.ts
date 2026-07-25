@@ -1,6 +1,7 @@
 import type { AreaId } from "../data/areas";
 import type { DifficultyId } from "../data/difficulties";
 import type { InputProfile } from "../game/components/toolComponents";
+import { saveCoordinator } from "../save/saveCoordinator";
 
 const ROUTE_KEY = "minewalker.route.v1";
 
@@ -68,5 +69,10 @@ export function restoreRouteState(storage?: Storage): RouteState {
 function persistRouteState(storage?: Storage): void {
   const target =
     storage ?? (typeof localStorage === "undefined" ? undefined : localStorage);
-  target?.setItem(ROUTE_KEY, JSON.stringify(routeState));
+  if (storage) {
+    target?.setItem(ROUTE_KEY, JSON.stringify(routeState));
+    return;
+  }
+  saveCoordinator.markDirty("route", routeState, "routeChange");
+  void saveCoordinator.flushDomain("route", "navigation");
 }

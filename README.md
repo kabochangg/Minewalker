@@ -89,6 +89,19 @@ npm run e2e
 
 `npm run test` includes deterministic migration/transaction tests, a 1,800-state play-time-equivalent soak, and 10,000 generated dungeons across all difficulties.
 
+## Japanese text and exploration performance
+
+- `MinewalkerJP` Regular/Bold WOFF2 files and their OFL license are self-hosted and included in the PWA precache.
+- Phaser Text is normalized through a scene plugin, while status markers use code-drawn icons instead of platform-dependent Unicode symbols.
+- `npm run verify:encoding` rejects invalid UTF-8, replacement characters, NUL bytes, and known mojibake sequences.
+- Exploration terrain is batched into one Canvas Graphics object. Only visible tiles plus a two-tile margin are drawn.
+- World interaction uses one pointer listener; movement uses a 16.67ms fixed step with a three-step catch-up limit.
+- Normal run saves are coalesced for up to 250ms. Page hiding, navigation, scene shutdown, and PWA updates flush pending saves.
+- Death, recovery, and checkpoint transactions continue to use the existing immediate write-ahead journal.
+- The E2E-only performance bridge reports FPS, frame-time p95, input latency, object counts, font status, and save status.
+
+Measured on the Playwright 390×844 scenario after 100 actions: approximately 60fps, 18ms frame-time p95, and 39 active GameObjects. See [performance-results.md](specs/002-text-performance-polish/performance-results.md).
+
 ## Cloudflare Pages
 
 - Build command: `npm run build`

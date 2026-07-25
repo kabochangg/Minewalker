@@ -1,4 +1,5 @@
 import Phaser from "phaser";
+import { GAME_FONT_FAMILY } from "../../assets/fontCatalog";
 import { VISUAL_TOKENS } from "../visual/VisualSystem";
 
 export { VISUAL_TOKENS };
@@ -38,7 +39,14 @@ export type GameIcon =
   | "ore"
   | "weapon"
   | "armor"
-  | "star";
+  | "star"
+  | "flag"
+  | "warning"
+  | "check"
+  | "recovery"
+  | "snow"
+  | "mine"
+  | "exit";
 
 export type GameButtonState =
   "normal" | "selected" | "disabled" | "danger" | "success";
@@ -157,7 +165,7 @@ export function addGameButton(
       compactIconLayout ? 11 : 0,
       label,
       {
-        fontFamily: "system-ui, sans-serif",
+        fontFamily: GAME_FONT_FAMILY,
         fontSize: `${options.fontSize ?? VISUAL_TOKENS.font.button}px`,
         color: state === "disabled" ? "#aaa79f" : VISUAL_TOKENS.colors.text,
         fontStyle: "bold",
@@ -253,7 +261,7 @@ export function addResourceBar(
   );
   const text = scene.add
     .text(6, 0, `${label} ${value}/${max}`, {
-      fontFamily: "system-ui, sans-serif",
+      fontFamily: GAME_FONT_FAMILY,
       fontSize: "12px",
       color: "#ffffff",
       fontStyle: "bold",
@@ -396,6 +404,53 @@ export function drawGameIcon(
         true,
       );
       break;
+    case "flag":
+      g.lineBetween(-6, -9, -6, 9);
+      g.fillTriangle(-5, -8, 8, -4, -5, 1);
+      g.lineBetween(-9, 9, 0, 9);
+      break;
+    case "warning":
+      g.strokeTriangle(0, -9, -9, 8, 9, 8);
+      g.lineBetween(0, -4, 0, 3);
+      g.fillCircle(0, 6, 1.5);
+      break;
+    case "check":
+      g.lineStyle(3, color, 1);
+      g.lineBetween(-8, 0, -2, 7);
+      g.lineBetween(-2, 7, 9, -7);
+      break;
+    case "recovery":
+      g.fillRect(-3, -9, 6, 18);
+      g.fillRect(-9, -3, 18, 6);
+      break;
+    case "snow":
+      for (let angle = 0; angle < 180; angle += 60) {
+        const radians = Phaser.Math.DegToRad(angle);
+        g.lineBetween(
+          Math.cos(radians) * -9,
+          Math.sin(radians) * -9,
+          Math.cos(radians) * 9,
+          Math.sin(radians) * 9,
+        );
+      }
+      break;
+    case "mine":
+      g.fillCircle(0, 0, 6);
+      for (let angle = 0; angle < 360; angle += 45) {
+        const radians = Phaser.Math.DegToRad(angle);
+        g.lineBetween(
+          Math.cos(radians) * 6,
+          Math.sin(radians) * 6,
+          Math.cos(radians) * 10,
+          Math.sin(radians) * 10,
+        );
+      }
+      break;
+    case "exit":
+      g.strokeRect(-8, -9, 16, 18);
+      g.strokeRect(-4, -5, 8, 14);
+      g.fillCircle(2, 2, 1.5);
+      break;
   }
   return scene.add.container(x, y, [g]);
 }
@@ -439,7 +494,7 @@ export function addSmallLabel(
 ): Phaser.GameObjects.Text {
   return scene.add
     .text(x, y, text, {
-      fontFamily: "system-ui, sans-serif",
+      fontFamily: GAME_FONT_FAMILY,
       fontSize: `${VISUAL_TOKENS.font.body}px`,
       color: VISUAL_TOKENS.colors.muted,
       fontStyle: "600",

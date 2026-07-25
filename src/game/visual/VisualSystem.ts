@@ -106,6 +106,26 @@ export interface MonsterVisualState {
   readonly showHp: boolean;
 }
 
+/** フレーム時間に応じて装飾演出だけを段階的に軽量化する。 */
+export class VisualQualityController {
+  #quality: VisualEffectQuality = "normal";
+  #slowFrames = 0;
+
+  /** 現在の演出品質を返す。 */
+  get quality(): VisualEffectQuality {
+    return this.#quality;
+  }
+
+  /** フレーム時間を記録し、継続的な遅延時だけ品質を下げる。 */
+  recordFrame(deltaMs: number): VisualEffectQuality {
+    this.#slowFrames =
+      deltaMs > 25 ? this.#slowFrames + 1 : Math.max(0, this.#slowFrames - 2);
+    if (this.#slowFrames >= 30) this.#quality = "reduced";
+    if (this.#slowFrames === 0 && deltaMs < 20) this.#quality = "normal";
+    return this.#quality;
+  }
+}
+
 export function getAreaVisualTheme(id: AreaVisualThemeId): AreaVisualTheme {
   return AREA_VISUAL_THEMES[id];
 }

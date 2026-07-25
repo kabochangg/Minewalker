@@ -1,3 +1,19 @@
+@font-face {
+  font-family: "MinewalkerJP";
+  src: url("../../assets/fonts/minewalker-jp-regular.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "MinewalkerJP";
+  src: url("../../assets/fonts/minewalker-jp-bold.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+}
+
 :root {
   --color-void: #0a0f12;
   --color-cave: #18140f;
@@ -7,7 +23,7 @@
   --color-text: #fff3d6;
   --color-muted: #d3b98b;
   color-scheme: dark;
-  font-family: system-ui, sans-serif;
+  font-family: "MinewalkerJP", "Noto Sans JP", sans-serif;
   background: var(--color-void);
   color: var(--color-text);
 }
@@ -29,6 +45,8 @@ body,
 body {
   padding-top: env(safe-area-inset-top);
   padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
   background:
     radial-gradient(
       circle at 50% 20%,
@@ -40,6 +58,7 @@ body {
 
 canvas {
   display: block;
+  touch-action: none;
   image-rendering: pixelated;
   image-rendering: crisp-edges;
 }
