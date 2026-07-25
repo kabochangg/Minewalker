@@ -13,6 +13,8 @@ export type TileState =
   | "blocked";
 
 export type TileMark = "none" | "flag";
+export type TileTerrain = "wall" | "floor" | "blocked";
+export type TileDiscovery = "hidden" | "revealed";
 
 export interface Tile {
   readonly x: number;
@@ -21,9 +23,15 @@ export interface Tile {
   readonly mark: TileMark;
   readonly hasMine: boolean;
   readonly adjacentMineCount: number;
+  /** armed状態の危険物から再計算した周囲8マスの数。 */
+  readonly adjacentHazardCount?: number;
   readonly mineId?: string;
+  readonly hazardId?: string;
   readonly itemId?: ItemId;
   readonly monsterId?: MonsterId;
+  readonly checkpointId?: string;
+  readonly terrain?: TileTerrain;
+  readonly discovery?: TileDiscovery;
   readonly breakCost: number;
   readonly durability: number;
   readonly isWalkable: boolean;

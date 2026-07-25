@@ -15,6 +15,10 @@ export interface PlayerState {
   readonly coins: number;
   readonly depth: number;
   readonly actionState: PlayerActionState;
+  /** 連続移動の中心座標。旧セーブでは省略される。 */
+  readonly position?: { readonly x: number; readonly y: number };
+  /** 走行中か歩行中かを表す。 */
+  readonly locomotion?: "walk" | "run";
 }
 
 export function createInitialPlayer(): PlayerState {
@@ -30,6 +34,8 @@ export function createInitialPlayer(): PlayerState {
     coins: 0,
     depth: 0,
     actionState: "idle",
+    position: { x: 4.5, y: 7.5 },
+    locomotion: "walk",
   };
 }
 

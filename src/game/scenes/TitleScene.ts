@@ -1,5 +1,8 @@
 import Phaser from "phaser";
+import { getRouteState, setRouteState } from "../../app/routeState";
 import { ASSET_KEYS } from "../../assets/assetCatalog";
+import { clearRun, loadRun } from "../../save/RunSaveSystem";
+import { resetGamePreservingPreferences } from "../../save/SaveSystem";
 import { getGameState, setGameState } from "../state/GameState";
 import { visualHash, VISUAL_TOKENS } from "../visual/VisualSystem";
 import { addButton, addGameButton, COLORS, drawPixelMiner } from "./uiHelpers";
@@ -49,8 +52,8 @@ export class TitleScene extends Phaser.Scene {
       570,
       270,
       74,
-      "プレイ",
-      () => this.scene.start("AreaSelectScene"),
+      "ゲーム開始",
+      () => this.showStartMenu(),
       { state: "selected", icon: "play" },
     );
     addGameButton(
@@ -101,6 +104,95 @@ export class TitleScene extends Phaser.Scene {
     if (!state.settings.tutorialSeen) {
       this.showTutorial();
     }
+  }
+
+  private showStartMenu(): void {
+    const interrupted = loadRun();
+    const overlay = this.add.rectangle(195, 422, 390, 844, 0x000000, 0.72);
+    const panel = this.add
+      .rectangle(195, 430, 320, 270, COLORS.panel, 0.99)
+      .setStrokeStyle(2, COLORS.goldDark);
+    const title = this.add
+      .text(195, 338, "探索を始める", {
+        fontSize: "24px",
+        color: COLORS.text,
+        fontStyle: "bold",
+      })
+      .setOrigin(0.5);
+    const continueButton = addGameButton(
+      this,
+      195,
+      412,
+      240,
+      58,
+      interrupted ? "つづきから" : "つづきから（データなし）",
+      () => {
+        if (interrupted) {
+          setRouteState({
+            ...getRouteState(),
+            requestedStartMode: "continue",
+          });
+          this.scene.start("AreaSelectScene");
+        }
+      },
+      { state: interrupted ? "success" : "normal", icon: "play" },
+    );
+    const newButton = addGameButton(
+      this,
+      195,
+      482,
+      240,
+      58,
+      "はじめから",
+      () => this.confirmNewGame(),
+      { state: "selected", icon: "pickaxe" },
+    );
+    const closeButton = addButton(this, 195, 548, 140, 44, "閉じる", () => {
+      [overlay, panel, title, continueButton, newButton, closeButton].forEach(
+        (object) => object.destroy(),
+      );
+    });
+  }
+
+  private confirmNewGame(): void {
+    const state = getGameState();
+    const overlay = this.add.rectangle(195, 422, 390, 844, 0x000000, 0.78);
+    const panel = this.add
+      .rectangle(195, 430, 330, 240, COLORS.panel, 1)
+      .setStrokeStyle(2, COLORS.red);
+    const text = this.add
+      .text(
+        195,
+        380,
+        "探索・装備・素材・死亡地点を初期化します。\n音・操作・アクセシビリティ設定は保持します。",
+        {
+          fontSize: "15px",
+          color: COLORS.text,
+          align: "center",
+          wordWrap: { width: 280 },
+        },
+      )
+      .setOrigin(0.5);
+    const cancel = addButton(this, 122, 500, 120, 48, "キャンセル", () => {
+      [overlay, panel, text, cancel, accept].forEach((object) =>
+        object.destroy(),
+      );
+    });
+    const accept = addButton(
+      this,
+      268,
+      500,
+      120,
+      48,
+      "初期化する",
+      () => {
+        setGameState(resetGamePreservingPreferences(state));
+        clearRun();
+        setRouteState({ ...getRouteState(), requestedStartMode: "new" });
+        this.scene.start("AreaSelectScene");
+      },
+      COLORS.red,
+    );
   }
 
   private showTutorial(): void {

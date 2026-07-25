@@ -3,6 +3,7 @@ import { createInitialPlayer } from "../game/entities/player";
 import { getTile, replaceTile } from "../game/map/types";
 import { generateMinefield, isAdjacent } from "../game/systems/MinefieldSystem";
 import {
+  advanceContinuousMovement,
   canMoveTo,
   directionFromAngle,
   MOVE_VECTORS,
@@ -74,5 +75,40 @@ describe("eight-direction movement", () => {
     if (!target) throw new Error("Expected target tile");
     expect(tryMove(field, player, target, [{ x: 3, y: 3 }])).toEqual(player);
     expect(canMoveTo(field, player, target, [{ x: 3, y: 2 }])).toBe(false);
+  });
+
+  it("moves smoothly while synchronizing the grid position after a boundary", () => {
+    const field = createOpenField();
+    const result = advanceContinuousMovement(
+      field,
+      { x: 2, y: 2 },
+      { x: 2.5, y: 2.5 },
+      MOVE_VECTORS.right,
+      0.6,
+    );
+    expect(result.moved).toBe(true);
+    expect(result.position.x).toBeCloseTo(3.1);
+    expect(result.position.y).toBeCloseTo(2.5);
+    expect(result.gridPosition).toEqual({ x: 3, y: 2 });
+  });
+
+  it("slides along a blocked wall instead of crossing into it", () => {
+    const field = createOpenField();
+    const blocked = getTile(field, 3, 2);
+    if (!blocked) throw new Error("Expected blocked tile");
+    const fieldWithWall = replaceTile(field, {
+      ...blocked,
+      isWalkable: false,
+    });
+    const result = advanceContinuousMovement(
+      fieldWithWall,
+      { x: 2, y: 2 },
+      { x: 2.9, y: 2.5 },
+      MOVE_VECTORS.downRight,
+      0.8,
+    );
+    expect(result.gridPosition).toEqual({ x: 2, y: 3 });
+    expect(result.position.x).toBeLessThan(3);
+    expect(result.position.y).toBeGreaterThan(3);
   });
 });

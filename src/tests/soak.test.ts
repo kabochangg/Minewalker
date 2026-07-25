@@ -3,6 +3,8 @@ import {
   generateMinefield,
   validateMinefield,
 } from "../game/systems/MinefieldSystem";
+import { generateDungeon } from "../game/map/DungeonGenerator";
+import { validateDungeon } from "../game/map/dungeonValidator";
 
 describe("30-minute equivalent minefield soak", () => {
   it("generates and validates 1,800 consecutive seeded board states", () => {
@@ -23,4 +25,17 @@ describe("30-minute equivalent minefield soak", () => {
 
     expect(checkedTiles).toBe(316_800);
   });
+
+  it("3難易度で合計10,000盤面の安全性・数字・ID・到達性を検証する", () => {
+    const difficulties = ["easy", "normal", "hard"] as const;
+    for (let index = 0; index < 10_000; index += 1) {
+      const difficultyId = difficulties[index % difficulties.length];
+      const dungeon = generateDungeon({
+        seed: `soak.dungeon.${index}`,
+        areaId: "area.beginnerMine",
+        difficultyId,
+      });
+      expect(validateDungeon(dungeon)).toEqual([]);
+    }
+  }, 60_000);
 });

@@ -19,6 +19,7 @@ import {
   removeItems,
   type InventoryState,
 } from "../systems/InventorySystem";
+import { repairTool, upgradeTool } from "../systems/ToolSystem";
 
 export interface ExplorationReward {
   readonly success: boolean;
@@ -286,6 +287,44 @@ export function discardItem(itemId: ItemId, amount = 1): SpendResult {
     message: `${amount}個破棄しました`,
     state: setGameState(next),
   };
+}
+
+/** 拠点で指定道具を修理し、自動保存する。 */
+export function tryRepairTool(equipmentId: EquipmentId): SpendResult {
+  const state = getGameState();
+  const condition = state.toolConditions[equipmentId];
+  if (!condition)
+    return { ok: false, message: "修理できる道具がありません", state };
+  const result = repairTool(condition);
+  if (state.player.coins < result.coinCost) {
+    return { ok: false, message: "修理コインが足りません", state };
+  }
+  const next: SaveData = {
+    ...state,
+    player: { ...state.player, coins: state.player.coins - result.coinCost },
+    toolConditions: { ...state.toolConditions, [equipmentId]: result.tool },
+    lastSavedAt: new Date().toISOString(),
+  };
+  return { ok: true, message: "道具を修理しました", state: setGameState(next) };
+}
+
+/** 拠点で指定道具を1段階強化し、自動保存する。 */
+export function tryUpgradeTool(equipmentId: EquipmentId): SpendResult {
+  const state = getGameState();
+  const condition = state.toolConditions[equipmentId];
+  if (!condition)
+    return { ok: false, message: "強化できる道具がありません", state };
+  const result = upgradeTool(condition);
+  if (state.player.coins < result.coinCost) {
+    return { ok: false, message: "強化コインが足りません", state };
+  }
+  const next: SaveData = {
+    ...state,
+    player: { ...state.player, coins: state.player.coins - result.coinCost },
+    toolConditions: { ...state.toolConditions, [equipmentId]: result.tool },
+    lastSavedAt: new Date().toISOString(),
+  };
+  return { ok: true, message: "道具を強化しました", state: setGameState(next) };
 }
 
 function resolveUnlockedAreas(

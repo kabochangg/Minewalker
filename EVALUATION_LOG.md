@@ -1,5 +1,36 @@
 # Minewalker Evaluation Log
 
+## 2026-07-25 dungeon-expansion implementation
+
+### Implemented
+
+- Added serializable component state, ExplorationState v2, command/event contracts, and an application coordinator.
+- Added persistent SaveData v3 and interrupted-run v2 migrations with backup fallback and retained legacy keys.
+- Added a write-ahead transaction journal with roll-forward recovery for checkpoint, defeat, and cache recovery.
+- Added four hazard definitions, dynamic adjacent counts, protected danger marks, exact false-disposal costs, tool durability, repair, and upgrades.
+- Added checkpoint objectives, movement-equivalent territory flood fill, atomic claiming, and persistent territory summaries.
+- Added deterministic death-cache IDs, per-item ceil splitting, respawn, multiple caches, capacity-safe atomic recovery, and map/result markers.
+- Added easy/normal/hard deterministic generation, staged attempt seeds, rooms, hazards, chests, monsters, checkpoints, and dungeon validation.
+- Added Game Start submenu, Continue/New Game, preference-preserving reset, input profiles, PWA install/update/defer state, and save-before-update.
+
+### Automated results
+
+- `npm run format`: passed.
+- `npm run lint`: passed.
+- `npx tsc --noEmit`: passed.
+- `npm run test`: 109 tests passed in 25 files.
+- 1,800-state play-time-equivalent minefield soak: passed.
+- 10,000 generated dungeons across three difficulties: passed.
+- `npm run build`: passed; manifest, Service Worker, and 22 precache entries generated.
+- `npm run e2e`: 51 tests passed across 320×844, 390×844, and 430×932.
+- Production offline reload and save preference persistence: passed.
+
+### Visual review
+
+- Reviewed generated 390×844-equivalent Exploration and Area Select captures.
+- HUD, numbers, terrain, player, difficulty, and action controls remain visible without clipping.
+- The renderer maintains pixel-art scaling and fixed UI over the moving world camera.
+
 ## 2026-07-13 release-candidate work
 
 ### Implemented

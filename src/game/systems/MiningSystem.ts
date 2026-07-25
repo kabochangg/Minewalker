@@ -41,6 +41,16 @@ export function mineTile(
       exploded: false,
     };
   }
+  if (tile.mark === "flag") {
+    return {
+      field,
+      player,
+      inventory,
+      message: "危険マーク付きの壁は保護されています",
+      mined: false,
+      exploded: false,
+    };
+  }
   if (tile.isWalkable || tile.state === "blocked") {
     return {
       field,

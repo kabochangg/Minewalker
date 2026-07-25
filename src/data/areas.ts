@@ -27,6 +27,12 @@ export interface AreaDefinition {
   readonly monsterIds: readonly MonsterId[];
   readonly materialIds: readonly ItemId[];
   readonly unlockRequirement?: AreaUnlockRequirement;
+  readonly checkpointObjectives: readonly (
+    | { readonly kind: "reach"; readonly required: 1 }
+    | { readonly kind: "disposeHazards"; readonly required: number }
+    | { readonly kind: "collectMaterials"; readonly required: number }
+    | { readonly kind: "defeatBoss"; readonly required: 1 }
+  )[];
 }
 
 export const AREAS: readonly AreaDefinition[] = [
@@ -47,6 +53,7 @@ export const AREAS: readonly AreaDefinition[] = [
       "item.copperOre",
       "item.slimeCore",
     ],
+    checkpointObjectives: [{ kind: "reach", required: 1 }],
   },
   {
     id: "area.crystalCave",
@@ -70,6 +77,10 @@ export const AREAS: readonly AreaDefinition[] = [
       coins: 80,
       items: { "item.ironOre": 8, "item.blueCrystal": 2 },
     },
+    checkpointObjectives: [
+      { kind: "reach", required: 1 },
+      { kind: "disposeHazards", required: 2 },
+    ],
   },
   {
     id: "area.volcanoMine",
@@ -98,6 +109,10 @@ export const AREAS: readonly AreaDefinition[] = [
         "item.minePart": 5,
       },
     },
+    checkpointObjectives: [
+      { kind: "reach", required: 1 },
+      { kind: "collectMaterials", required: 8 },
+    ],
   },
   {
     id: "area.ancientSite",
@@ -121,6 +136,10 @@ export const AREAS: readonly AreaDefinition[] = [
       coins: 600,
       items: { "item.goldOre": 10, "item.redCrystal": 5, "item.golemShard": 3 },
     },
+    checkpointObjectives: [
+      { kind: "reach", required: 1 },
+      { kind: "defeatBoss", required: 1 },
+    ],
   },
 ];
 

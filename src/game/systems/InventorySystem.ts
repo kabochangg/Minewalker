@@ -10,6 +10,10 @@ export interface InventoryState {
   readonly maps: number;
 }
 
+export interface RunInventoryState extends InventoryState {
+  readonly acquiredThisRun: Readonly<Partial<Record<ItemId, number>>>;
+}
+
 export interface AddItemResult {
   readonly inventory: InventoryState;
   readonly added: boolean;
@@ -70,6 +74,26 @@ export function addItem(
       items: {
         ...inventory.items,
         [itemId]: (inventory.items[itemId] ?? 0) + amount,
+      },
+    },
+  };
+}
+
+/** 今回入手分を追跡しながら素材を追加する。 */
+export function addRunItem(
+  inventory: RunInventoryState,
+  itemId: ItemId,
+  amount: number,
+): { readonly inventory: RunInventoryState; readonly added: boolean } {
+  const result = addItem(inventory, itemId, amount);
+  if (!result.added) return { inventory, added: false };
+  return {
+    added: true,
+    inventory: {
+      ...result.inventory,
+      acquiredThisRun: {
+        ...inventory.acquiredThisRun,
+        [itemId]: (inventory.acquiredThisRun[itemId] ?? 0) + amount,
       },
     },
   };

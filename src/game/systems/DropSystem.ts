@@ -6,6 +6,29 @@ export interface DropResult {
   readonly amount: number;
 }
 
+export type DropSource = "wall" | "hazard" | "chest" | "monster";
+
+/** 報酬源ごとの候補から決定的に報酬を抽選する。 */
+export function rollSourceDrop(
+  source: DropSource,
+  seed: string,
+  entries: readonly DropEntry[],
+  difficultyMultiplier = 1,
+): DropResult | undefined {
+  const sourceMultiplier =
+    source === "hazard" ? 1.5 : source === "chest" ? 1.25 : 1;
+  const result = rollWeightedDrop(entries, `${seed}:${source}`);
+  return result
+    ? {
+        ...result,
+        amount: Math.max(
+          1,
+          Math.round(result.amount * difficultyMultiplier * sourceMultiplier),
+        ),
+      }
+    : undefined;
+}
+
 export function rollWeightedDrop(
   entries: readonly DropEntry[],
   seed: string,

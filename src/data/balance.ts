@@ -22,5 +22,20 @@ export const BALANCE = {
   combat: {
     playerAttackCooldownMs: 550,
     monsterAttackCooldownMs: 1_200,
+    staminaCost: 2,
+  },
+  stamina: {
+    walkCostPerSecond: 0,
+    runCostPerSecond: 5,
+    recoveryPerSecond: 4,
+  },
+  hazard: {
+    disposalStaminaCost: 2,
+  },
+  tool: {
+    baseDurability: 20,
+    durabilityPerTier: 10,
+    repairCoinPerPoint: 2,
+    upgradeCoinBase: 80,
   },
 } as const;

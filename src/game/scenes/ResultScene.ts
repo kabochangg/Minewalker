@@ -20,7 +20,7 @@ export class ResultScene extends Phaser.Scene {
   }
 
   create(data: ResultSceneData): void {
-    clearRun();
+    if (data.success) clearRun();
     const stateBefore = getGameState();
     const success = data.success ?? false;
     const depth = data.depth ?? 0;
@@ -115,6 +115,39 @@ export class ResultScene extends Phaser.Scene {
     this.add
       .text(195, 550, monsterText, { fontSize: "16px", color: COLORS.muted })
       .setOrigin(0.5);
+    const claimedTiles = Object.values(stateAfter.territories).reduce(
+      (sum, territory) => sum + territory.tileKeys.length,
+      0,
+    );
+    if (success) {
+      this.add
+        .text(
+          195,
+          590,
+          `自陣を${claimedTiles}マスまで確保しました\n次の探索へ進むか、拠点へ戻れます`,
+          {
+            fontSize: "13px",
+            color: "#79d36b",
+            align: "center",
+          },
+        )
+        .setOrigin(0.5);
+    }
+    const latestCache = stateAfter.deathCaches.at(-1);
+    if (!success && latestCache) {
+      this.add
+        .text(
+          195,
+          600,
+          `死亡地点 (${latestCache.position.x}, ${latestCache.position.y})\n装備 ${latestCache.equipment.length}点 / 素材 ${Object.values(latestCache.items).reduce((sum, amount) => sum + (amount ?? 0), 0)}個\n同じ地点へ戻ると全量回収できます`,
+          {
+            fontSize: "13px",
+            color: "#ffb59f",
+            align: "center",
+          },
+        )
+        .setOrigin(0.5);
+    }
     addButton(this, 118, 720, 150, 56, "拠点へ", () =>
       this.scene.start("HomeScene"),
     );

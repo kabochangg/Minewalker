@@ -205,3 +205,9 @@ export function getEquipment(id: EquipmentId): EquipmentDefinition {
   }
   return equipment;
 }
+
+/** 装備Tierから処理道具の最大耐久値を返す。 */
+export function getToolMaxDurability(id: EquipmentId): number {
+  const equipment = getEquipment(id);
+  return equipment.slot === "pickaxe" ? 20 + equipment.tier * 10 : 100;
+}

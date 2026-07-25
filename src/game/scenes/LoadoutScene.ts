@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import { getSelectedAreaId } from "../../app/routeState";
 import { getArea } from "../../data/areas";
+import { DIFFICULTIES } from "../../data/difficulties";
 import {
   EQUIPMENT,
   getEquipment,
@@ -62,7 +63,12 @@ export class LoadoutScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
     this.add
-      .text(195, 148, area.name, { fontSize: "15px", color: COLORS.muted })
+      .text(
+        195,
+        148,
+        `${area.name} / ${DIFFICULTIES[state.selectedDifficulty].label}`,
+        { fontSize: "15px", color: COLORS.muted },
+      )
       .setOrigin(0.5);
 
     const equipped = [

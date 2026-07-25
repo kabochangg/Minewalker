@@ -1,8 +1,13 @@
 import Phaser from "phaser";
 import { AREAS, type AreaId } from "../../data/areas";
-import { setSelectedAreaId } from "../../app/routeState";
+import { DIFFICULTIES, type DifficultyId } from "../../data/difficulties";
+import {
+  getRouteState,
+  setRouteState,
+  setSelectedAreaId,
+} from "../../app/routeState";
 import { loadRun } from "../../save/RunSaveSystem";
-import { getGameState, tryUnlockArea } from "../state/GameState";
+import { getGameState, setGameState, tryUnlockArea } from "../state/GameState";
 import {
   getAreaVisualTheme,
   type AreaVisualThemeId,
@@ -57,12 +62,30 @@ export class AreaSelectScene extends Phaser.Scene {
       this.scene.start("SettingsScene"),
     );
     this.add
-      .text(195, 112, this.message, {
-        fontSize: "18px",
+      .text(195, 145, this.message, {
+        fontSize: "13px",
         color: COLORS.text,
         fontStyle: "bold",
       })
       .setOrigin(0.5);
+    addButton(
+      this,
+      195,
+      112,
+      172,
+      38,
+      `難易度: ${DIFFICULTIES[state.selectedDifficulty].label}`,
+      () => this.cycleDifficulty(state.selectedDifficulty),
+      COLORS.goldDark,
+    );
+    if (state.deathCaches.length > 0) {
+      this.add
+        .text(195, 140, `回収待ち ${state.deathCaches.length}地点`, {
+          fontSize: "12px",
+          color: "#ff8b72",
+        })
+        .setOrigin(0.5);
+    }
 
     AREAS.forEach((area, index) => {
       const unlocked = state.unlockedAreas.includes(area.id);
@@ -114,6 +137,15 @@ export class AreaSelectScene extends Phaser.Scene {
     addButton(this, 82, 790, 120, 52, "戻る", () =>
       this.scene.start("HomeScene"),
     );
+  }
+
+  private cycleDifficulty(current: DifficultyId): void {
+    const order: readonly DifficultyId[] = ["easy", "normal", "hard"];
+    const next = order[(order.indexOf(current) + 1) % order.length];
+    setGameState({ ...getGameState(), selectedDifficulty: next });
+    setRouteState({ ...getRouteState(), selectedDifficulty: next });
+    this.message = `難易度を${DIFFICULTIES[next].label}に変更しました`;
+    this.render();
   }
 
   private drawAreaThumbnail(

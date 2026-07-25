@@ -1,4 +1,5 @@
 import Phaser from "phaser";
+import { getRouteState, setRouteState } from "../../app/routeState";
 import { getGameState, setGameState } from "../state/GameState";
 import { addButton, addPanel, COLORS } from "./uiHelpers";
 
@@ -55,7 +56,27 @@ export class SettingsScene extends Phaser.Scene {
     addButton(
       this,
       195,
-      300,
+      270,
+      240,
+      44,
+      `音量 ${Math.round(state.settings.volume * 100)}%`,
+      () => {
+        const levels = [0, 0.5, 0.8, 1] as const;
+        const current = levels.findIndex(
+          (level) => level === state.settings.volume,
+        );
+        const volume = levels[(current + 1) % levels.length];
+        setGameState({
+          ...state,
+          settings: { ...state.settings, volume },
+        });
+        this.render();
+      },
+    );
+    addButton(
+      this,
+      195,
+      330,
       240,
       58,
       `振動 ${state.settings.vibration ? "ON" : "OFF"}`,
@@ -67,11 +88,11 @@ export class SettingsScene extends Phaser.Scene {
         this.render();
       },
     );
-    this.drawToggle(286, 300, state.settings.vibration);
+    this.drawToggle(286, 330, state.settings.vibration);
     addButton(
       this,
       195,
-      380,
+      410,
       240,
       58,
       `演出 ${state.settings.reducedMotion ? "少なめ" : "通常"}`,
@@ -86,11 +107,11 @@ export class SettingsScene extends Phaser.Scene {
         this.render();
       },
     );
-    this.drawToggle(286, 380, !state.settings.reducedMotion);
+    this.drawToggle(286, 410, !state.settings.reducedMotion);
     addButton(
       this,
       195,
-      460,
+      490,
       240,
       58,
       `文字 ${state.settings.textSize === "large" ? "大" : "標準"}`,
@@ -105,11 +126,106 @@ export class SettingsScene extends Phaser.Scene {
         this.render();
       },
     );
-    this.drawToggle(286, 460, state.settings.textSize === "large");
+    this.drawToggle(286, 490, state.settings.textSize === "large");
+    addButton(
+      this,
+      195,
+      550,
+      260,
+      48,
+      `操作 ${inputModeLabel(state.controlScheme.mode)}`,
+      () => {
+        const modes = ["touchJoystick", "touchTap", "keyboard"] as const;
+        const mode =
+          modes[(modes.indexOf(state.controlScheme.mode) + 1) % modes.length];
+        setGameState({
+          ...state,
+          controlScheme: { ...state.controlScheme, mode },
+        });
+        setRouteState({
+          ...getRouteState(),
+          inputProfile: { ...state.controlScheme, mode },
+        });
+        this.render();
+      },
+    );
+    addButton(
+      this,
+      112,
+      610,
+      150,
+      44,
+      `走行 ${state.controlScheme.runBehavior === "hold" ? "長押し" : "切替"}`,
+      () => {
+        setGameState({
+          ...state,
+          controlScheme: {
+            ...state.controlScheme,
+            runBehavior:
+              state.controlScheme.runBehavior === "hold" ? "toggle" : "hold",
+          },
+        });
+        this.render();
+      },
+    );
+    addButton(
+      this,
+      278,
+      610,
+      150,
+      44,
+      `マーク ${state.controlScheme.markBehavior === "longPress" ? "長押し" : "ボタン"}`,
+      () => {
+        setGameState({
+          ...state,
+          controlScheme: {
+            ...state.controlScheme,
+            markBehavior:
+              state.controlScheme.markBehavior === "longPress"
+                ? "actionButton"
+                : "longPress",
+          },
+        });
+        this.render();
+      },
+    );
+    addButton(
+      this,
+      195,
+      664,
+      260,
+      42,
+      `移動キー ${state.controlScheme.keyBindings.up === "ArrowUp" ? "矢印" : "WASD"}`,
+      () => {
+        const arrows = state.controlScheme.keyBindings.up === "ArrowUp";
+        setGameState({
+          ...state,
+          controlScheme: {
+            ...state.controlScheme,
+            keyBindings: arrows
+              ? {
+                  ...state.controlScheme.keyBindings,
+                  up: "KeyW",
+                  down: "KeyS",
+                  left: "KeyA",
+                  right: "KeyD",
+                }
+              : {
+                  ...state.controlScheme.keyBindings,
+                  up: "ArrowUp",
+                  down: "ArrowDown",
+                  left: "ArrowLeft",
+                  right: "ArrowRight",
+                },
+          },
+        });
+        this.render();
+      },
+    );
     this.add
       .text(
         195,
-        575,
+        714,
         "PWA更新は次回起動時に自動適用されます。セーブ破損時はバックアップから復元します。",
         {
           fontSize: "14px",
@@ -119,7 +235,7 @@ export class SettingsScene extends Phaser.Scene {
         },
       )
       .setOrigin(0.5);
-    addButton(this, 195, 760, 160, 56, "戻る", () =>
+    addButton(this, 195, 790, 160, 50, "戻る", () =>
       this.scene.start("HomeScene"),
     );
   }
@@ -133,4 +249,12 @@ export class SettingsScene extends Phaser.Scene {
     g.fillStyle(active ? 0xffe08a : 0xd3b98b, 1);
     g.fillCircle(x + (active ? 11 : -11), y, 7);
   }
+}
+
+function inputModeLabel(
+  mode: "touchJoystick" | "touchTap" | "keyboard",
+): string {
+  if (mode === "touchJoystick") return "スティック";
+  if (mode === "touchTap") return "タップ";
+  return "キーボード";
 }

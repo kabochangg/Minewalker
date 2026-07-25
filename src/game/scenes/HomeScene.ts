@@ -1,6 +1,12 @@
 import Phaser from "phaser";
+import type { EquipmentId } from "../../data/equipment";
 import { type UpgradeId } from "../../data/upgrades";
-import { getGameState, tryUpgrade } from "../state/GameState";
+import {
+  getGameState,
+  tryRepairTool,
+  tryUpgrade,
+  tryUpgradeTool,
+} from "../state/GameState";
 import { getUsedCapacity } from "../systems/InventorySystem";
 import {
   getNextUnlockHint,
@@ -56,6 +62,26 @@ export class HomeScene extends Phaser.Scene {
       .text(240, 44, `${state.player.coins}C`, {
         fontSize: "15px",
         color: COLORS.text,
+      })
+      .setOrigin(0.5);
+    if (state.deathCaches.length > 0) {
+      this.add
+        .text(
+          195,
+          355,
+          `回収待ち: ${state.deathCaches.length}地点（探索先でマーカーを確認）`,
+          { fontSize: "12px", color: "#ff8b72" },
+        )
+        .setOrigin(0.5);
+    }
+    const claimedTerritoryTiles = Object.values(state.territories).reduce(
+      (sum, territory) => sum + territory.tileKeys.length,
+      0,
+    );
+    this.add
+      .text(195, 374, `確保領域 ${claimedTerritoryTiles}マス`, {
+        fontSize: "12px",
+        color: "#79d36b",
       })
       .setOrigin(0.5);
     this.add
@@ -117,6 +143,32 @@ export class HomeScene extends Phaser.Scene {
       "探索へ",
       () => this.scene.start("AreaSelectScene"),
       COLORS.green,
+    );
+    const pickaxe = state.equipment.equipped.pickaxe as EquipmentId;
+    const condition = state.toolConditions[pickaxe];
+    addButton(
+      this,
+      120,
+      670,
+      130,
+      48,
+      `道具修理\n${condition?.currentDurability ?? 0}/${condition?.maxDurability ?? 0}`,
+      () => {
+        this.message = tryRepairTool(pickaxe).message;
+        this.render();
+      },
+    );
+    addButton(
+      this,
+      270,
+      670,
+      130,
+      48,
+      `道具強化\nT${condition?.tier ?? 1}`,
+      () => {
+        this.message = tryUpgradeTool(pickaxe).message;
+        this.render();
+      },
     );
 
     addButton(

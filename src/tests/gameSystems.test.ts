@@ -5,7 +5,10 @@ import { createInitialPlayer } from "../game/entities/player";
 import { getTile } from "../game/map/types";
 import { attackMonster } from "../game/systems/CombatSystem";
 import { rollWeightedDrop } from "../game/systems/DropSystem";
-import { createInitialInventory } from "../game/systems/InventorySystem";
+import {
+  addRunItem,
+  createInitialInventory,
+} from "../game/systems/InventorySystem";
 import { coolMine, disableMine } from "../game/systems/MineHandlingSystem";
 import { generateMinefield } from "../game/systems/MinefieldSystem";
 import { mineTile } from "../game/systems/MiningSystem";
@@ -26,7 +29,10 @@ describe("mine handling", () => {
       throw new Error("Expected generated mine");
     }
 
-    const result = coolMine(field, createInitialInventory(), mine);
+    const result = coolMine(field, createInitialInventory(), {
+      ...mine,
+      mark: "flag",
+    });
 
     expect(result.success).toBe(true);
     expect(result.inventory.coolants).toBe(BALANCE.mining.initialCoolants - 1);
@@ -48,7 +54,10 @@ describe("mine handling", () => {
       throw new Error("Expected generated mine");
     }
 
-    const result = disableMine(field, createInitialInventory(), mine);
+    const result = disableMine(field, createInitialInventory(), {
+      ...mine,
+      mark: "flag",
+    });
 
     expect(result.success).toBe(true);
     expect(result.inventory.disablers).toBe(
@@ -58,7 +67,47 @@ describe("mine handling", () => {
   });
 });
 
+describe("run inventory", () => {
+  it("入手元を今回分へ追跡し、容量超過と負数を防ぐ", () => {
+    const initial = {
+      ...createInitialInventory(),
+      capacity: 2,
+      acquiredThisRun: {},
+    };
+    const added = addRunItem(initial, "item.stone", 2);
+    expect(added.added).toBe(true);
+    expect(added.inventory.acquiredThisRun["item.stone"]).toBe(2);
+    expect(addRunItem(added.inventory, "item.coal", 1).added).toBe(false);
+    expect(
+      Object.values(added.inventory.items).every((amount) => amount >= 0),
+    ).toBe(true);
+  });
+});
+
 describe("mining", () => {
+  it("危険マーク付きの壁を通常採掘から保護する", () => {
+    const field = generateMinefield({
+      width: 3,
+      height: 3,
+      mineCount: 0,
+      safeRadius: 0,
+      seed: "marked-wall",
+      startX: 0,
+      startY: 0,
+    });
+    const wall = getTile(field, 1, 0);
+    if (!wall) throw new Error("Expected marked wall");
+    const result = mineTile(
+      field,
+      { ...createInitialPlayer(), x: 0, y: 0 },
+      createInitialInventory(),
+      { ...wall, mark: "flag" },
+      "test",
+    );
+    expect(result.mined).toBe(false);
+    expect(result.message).toContain("保護");
+  });
+
   it("allows mining a diagonally adjacent wall", () => {
     const field = generateMinefield({
       width: 3,

@@ -6,13 +6,28 @@ import {
   type TileVisual,
 } from "../../assets/assetCatalog";
 import { getArea } from "../../data/areas";
+import { DIFFICULTIES } from "../../data/difficulties";
 import { getItemName } from "../../data/items";
 import { getMonster, type MonsterId } from "../../data/monsters";
-import { clearRun, loadRun, saveRun } from "../../save/RunSaveSystem";
+import {
+  clearRun,
+  loadExplorationState,
+  loadRun,
+  saveRun,
+} from "../../save/RunSaveSystem";
+import { loadGame } from "../../save/SaveSystem";
+import type { DeathCache } from "../components/progressionComponents";
+import type { ToolConditionComponent } from "../components/toolComponents";
 import { createInitialPlayer, type PlayerState } from "../entities/player";
+import { generateDungeon } from "../map/DungeonGenerator";
 import type { Minefield, Tile } from "../map/types";
 import { getTile, replaceTile } from "../map/types";
-import { getEquippedStats, getGameState } from "../state/GameState";
+import {
+  getEquippedStats,
+  getGameState,
+  setGameState,
+} from "../state/GameState";
+import { ExplorationCoordinator } from "../application/ExplorationCoordinator";
 import { attackMonster, type CombatantState } from "../systems/CombatSystem";
 import { rollWeightedDrop } from "../systems/DropSystem";
 import { playFeedback, type FeedbackCue } from "../systems/FeedbackSystem";
@@ -26,17 +41,21 @@ import {
 import {
   coolMine,
   disableMine,
+  rebuildActiveMineCounts,
   toggleFlag,
 } from "../systems/MineHandlingSystem";
-import { generateMinefield, isAdjacent } from "../systems/MinefieldSystem";
+import { isAdjacent } from "../systems/MinefieldSystem";
 import { mineTile } from "../systems/MiningSystem";
 import {
+  advanceContinuousMovement,
   directionFromAngle,
   MOVE_VECTORS,
   tryMove,
+  type ContinuousPosition,
   type MoveDirection,
 } from "../systems/MovementSystem";
 import { isPositionDiscovered } from "../systems/VisibilitySystem";
+import { applyLocomotionCost, recoverStamina } from "../systems/StaminaSystem";
 import {
   facingFromMoveDirection,
   getAreaVisualTheme,
@@ -56,7 +75,7 @@ import {
   type GameIcon,
 } from "./uiHelpers";
 
-type ActionMode = "mine" | "cool" | "disable" | "potion" | "bag";
+type ActionMode = "mine" | "mark" | "cool" | "disable" | "potion" | "bag";
 
 interface MonsterRuntime {
   readonly id: MonsterId;
@@ -72,11 +91,24 @@ interface ExplorationE2EBridge {
   readonly reachExit: () => void;
   readonly inputDirection: (direction: MoveDirection) => void;
   readonly showResult: () => void;
+  readonly markMine: () => void;
+  readonly mineMarkedMine: () => void;
+  readonly disposeMine: () => void;
+  readonly falseDispose: () => void;
+  readonly triggerDefeat: () => void;
+  readonly recoverLatestDeathCache: () => void;
+  readonly toggleRun: () => void;
   readonly snapshot: () => {
     readonly usedCapacity: number;
     readonly cleared: boolean;
     readonly message: string;
     readonly facing: FacingDirection;
+    readonly stamina: number;
+    readonly toolDurability: number;
+    readonly adjacentAtPlayer: number;
+    readonly deathCacheCount: number;
+    readonly locomotion: "walk" | "run";
+    readonly generatedStartSafe: boolean;
   };
 }
 
@@ -86,17 +118,21 @@ const BOARD_Y = 0;
 const WORLD_TOP = 112;
 const WORLD_HEIGHT = 538;
 const MOVE_DURATION = 90;
-const JOYSTICK_X = 68;
+const CONTINUOUS_MOVE_SPEED = 5;
+// The smallest supported display scales the 390px game canvas down to ~67%.
+// Keep the touch controls generous here so they remain comfortably tappable on
+// 320px-wide phones rather than shrinking below the recommended 44px target.
+const JOYSTICK_X = 70;
 const JOYSTICK_Y = 770;
-const JOYSTICK_RADIUS = 58;
-const JOYSTICK_DEAD_ZONE = 8;
+const JOYSTICK_RADIUS = 68;
+const JOYSTICK_DEAD_ZONE = 12;
 
 export class ExplorationScene extends Phaser.Scene {
   private field!: Minefield;
   private player!: PlayerState;
   private inventory!: InventoryState;
   private mode: ActionMode = "mine";
-  private message = "数字を頼りに安全な壁を掘り進めよう";
+  private message = "左スティックで移動。隣接する壁をタップして採掘";
   private monsters: MonsterRuntime[] = [];
   private defeatedMonsters: MonsterId[] = [];
   private bossDefeated = false;
@@ -109,6 +145,8 @@ export class ExplorationScene extends Phaser.Scene {
     x: number;
     y: number;
   };
+  private playerPosition!: ContinuousPosition;
+  private playerLighting: Phaser.GameObjects.Arc[] = [];
   private facing: FacingDirection = "down";
   private joystickKnob?: Phaser.GameObjects.Arc;
   private joystickArrow?: Phaser.GameObjects.Triangle;
@@ -116,6 +154,12 @@ export class ExplorationScene extends Phaser.Scene {
   private heldDirection?: MoveDirection;
   private queuedDirection?: MoveDirection;
   private moving = false;
+  private tapMoveInProgress = false;
+  private running = false;
+  private toolCondition!: ToolConditionComponent;
+  private deathCaches: DeathCache[] = [];
+  private readonly pressedKeys = new Set<string>();
+  private generatedStartSafe = true;
   private readonly tileObjects: Phaser.GameObjects.GameObject[] = [];
   private readonly hudObjects: Phaser.GameObjects.GameObject[] = [];
   private readonly discoveredMonsterKeys = new Set<string>();
@@ -146,33 +190,108 @@ export class ExplorationScene extends Phaser.Scene {
       this.inventory = this.createRunInventory();
       this.monsters = this.createMonsters();
     }
+    const save = getGameState();
+    const pickaxeId = save.equipment.equipped.pickaxe;
+    this.toolCondition = resumed?.exploration.tools[0] ??
+      save.toolConditions[pickaxeId] ?? {
+        equipmentId: pickaxeId as ToolConditionComponent["equipmentId"],
+        currentDurability: 30,
+        maxDurability: 30,
+        tier: 1,
+        repairCount: 0,
+      };
+    this.deathCaches = [...(resumed?.exploration.deathCaches ?? [])];
+    this.generatedStartSafe = this.checkGeneratedStartSafety();
     if (
       import.meta.env.VITE_E2E === "1" &&
       new URLSearchParams(window.location.search).has("e2e")
     ) {
       this.prepareE2EScenario();
     }
+    this.playerPosition = resumed?.playerPosition ?? this.getPlayerCenter();
     this.input.on("pointermove", this.handleJoystickMove, this);
     this.input.on("pointerup", this.releaseJoystick, this);
+    this.input.keyboard?.on("keydown", this.handleKeyboardDown);
+    this.input.keyboard?.on("keyup", this.handleKeyboardUp);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.shutdownInput, this);
     this.render();
   }
 
+  update(_time: number, delta: number): void {
+    const activeDelta = Math.min(delta, 34);
+    if (!this.heldDirection && !this.failed && !this.cleared) {
+      const recovered = recoverStamina(this.player, activeDelta, true);
+      this.player = { ...this.player, stamina: recovered.stamina };
+    }
+    if (
+      !this.heldDirection ||
+      this.failed ||
+      this.cleared ||
+      this.tapMoveInProgress
+    ) {
+      return;
+    }
+    const locomotion = applyLocomotionCost(
+      this.player,
+      this.running ? "run" : "walk",
+      activeDelta,
+    );
+    this.player = { ...this.player, stamina: locomotion.state.stamina };
+    if (this.running && locomotion.locomotion === "walk") {
+      this.running = false;
+      this.message = "スタミナ不足のため歩行へ戻りました";
+    }
+    const direction = MOVE_VECTORS[this.heldDirection];
+    const result = advanceContinuousMovement(
+      this.field,
+      this.player,
+      this.playerPosition,
+      direction,
+      (CONTINUOUS_MOVE_SPEED * (this.running ? 1.6 : 1) * activeDelta) / 1000,
+      this.monsters.map((monster) => ({ x: monster.tileX, y: monster.tileY })),
+    );
+    if (!result.moved) {
+      return;
+    }
+    this.moving = true;
+    this.playerPosition = result.position;
+    if (
+      result.gridPosition.x !== this.player.x ||
+      result.gridPosition.y !== this.player.y
+    ) {
+      this.player = {
+        ...this.player,
+        ...result.gridPosition,
+        depth: Math.max(this.player.depth, result.gridPosition.y),
+        actionState: "moving",
+      };
+      this.saveRunState();
+      this.tryRecoverAtCurrentPosition();
+    }
+    const worldX = BOARD_X + this.playerPosition.x * TILE_SIZE;
+    const worldY = BOARD_Y + this.playerPosition.y * TILE_SIZE;
+    if (this.playerSprite) {
+      this.playerSprite.x = worldX;
+      this.playerSprite.y = worldY;
+    }
+    this.playerLighting.forEach((light) => light.setPosition(worldX, worldY));
+  }
+
   private createScenarioField(): Minefield {
     const area = getArea(getSelectedAreaId());
-    const width = 11;
-    const height = 16;
-    const mineCount = Math.floor(width * height * area.mineDensity);
-    const generated = generateMinefield({
-      width,
-      height,
-      mineCount,
-      safeRadius: 1,
+    const save = getGameState();
+    const dungeon = generateDungeon({
       seed: `minewalker:${area.id}:${Date.now()}`,
-      startX: 4,
-      startY: 7,
+      areaId: area.id,
+      difficultyId: save.selectedDifficulty,
+      entrance: { x: 4, y: 7 },
     });
-    const exitTile = getTile(generated, 9, 14);
+    const generated = dungeon.field;
+    const exitTile = getTile(
+      generated,
+      generated.width - 2,
+      generated.height - 2,
+    );
     if (!exitTile) {
       return generated;
     }
@@ -235,6 +354,10 @@ export class ExplorationScene extends Phaser.Scene {
       });
   }
 
+  private getPlayerCenter(): ContinuousPosition {
+    return { x: this.player.x + 0.5, y: this.player.y + 0.5 };
+  }
+
   private render(): void {
     this.clearObjects(this.tileObjects);
     this.clearObjects(this.hudObjects);
@@ -253,7 +376,7 @@ export class ExplorationScene extends Phaser.Scene {
     }
     if ((this.cleared || this.failed) && !this.resultQueued) {
       this.resultQueued = true;
-      clearRun();
+      if (this.cleared) clearRun();
       this.time.delayedCall(600, () => {
         this.scene.start("ResultScene", {
           success: this.cleared,
@@ -362,6 +485,22 @@ export class ExplorationScene extends Phaser.Scene {
             .setOrigin(0.5),
         );
       }
+    }
+    for (const cache of this.deathCaches) {
+      const marker = this.add
+        .text(
+          BOARD_X + (cache.position.x + 0.5) * TILE_SIZE,
+          BOARD_Y + (cache.position.y + 0.5) * TILE_SIZE,
+          "✚",
+          {
+            fontSize: "24px",
+            color: "#ff6b57",
+            stroke: "#1c1510",
+            strokeThickness: 3,
+          },
+        )
+        .setOrigin(0.5);
+      this.tileObjects.push(marker);
     }
   }
 
@@ -494,8 +633,8 @@ export class ExplorationScene extends Phaser.Scene {
 
   private drawLighting(): void {
     const theme = getAreaVisualTheme(getArea(getSelectedAreaId()).theme);
-    const x = BOARD_X + this.player.x * TILE_SIZE + TILE_SIZE / 2;
-    const y = BOARD_Y + this.player.y * TILE_SIZE + TILE_SIZE / 2;
+    const x = BOARD_X + this.playerPosition.x * TILE_SIZE;
+    const y = BOARD_Y + this.playerPosition.y * TILE_SIZE;
     const outer = this.add.circle(x, y, TILE_SIZE * 3.5, theme.glow, 0.025);
     const middle = this.add.circle(x, y, TILE_SIZE * 2.2, theme.glow, 0.035);
     const inner = this.add.circle(
@@ -505,12 +644,13 @@ export class ExplorationScene extends Phaser.Scene {
       VISUAL_TOKENS.colors.highlight,
       0.055,
     );
+    this.playerLighting = [outer, middle, inner];
     this.tileObjects.push(outer, middle, inner);
   }
 
   private drawPlayer(): void {
-    const x = BOARD_X + this.player.x * TILE_SIZE + TILE_SIZE / 2;
-    const y = BOARD_Y + this.player.y * TILE_SIZE + TILE_SIZE / 2;
+    const x = BOARD_X + this.playerPosition.x * TILE_SIZE;
+    const y = BOARD_Y + this.playerPosition.y * TILE_SIZE;
     if (this.textures.exists(ASSET_KEYS.player)) {
       const shadow = this.add.ellipse(0, 17, 34, 11, 0x000000, 0.42);
       const lampGlow = this.add.circle(
@@ -571,6 +711,7 @@ export class ExplorationScene extends Phaser.Scene {
       isWalkable: false,
       isRevealed: false,
     });
+    this.field = rebuildActiveMineCounts(this.field);
     this.field = replaceTile(this.field, {
       ...mine,
       state: "mineWall",
@@ -598,6 +739,7 @@ export class ExplorationScene extends Phaser.Scene {
     browserWindow.__minewalkerE2E = {
       mineWall: () => this.handleTileInteraction(currentTile(safe)),
       coolMine: () => {
+        this.handleFlag(currentTile(mine));
         this.mode = "cool";
         this.handleTileInteraction(currentTile(mine));
       },
@@ -615,11 +757,50 @@ export class ExplorationScene extends Phaser.Scene {
           defeatedMonsters: this.defeatedMonsters,
           bossDefeated: this.bossDefeated,
         }),
+      markMine: () => this.handleFlag(currentTile(mine)),
+      mineMarkedMine: () => {
+        this.mode = "mine";
+        this.handleTileInteraction(currentTile(mine));
+      },
+      disposeMine: () => {
+        if (currentTile(mine).mark !== "flag") {
+          this.handleFlag(currentTile(mine));
+        }
+        this.mode = "disable";
+        this.handleTileInteraction(currentTile(mine));
+      },
+      falseDispose: () => {
+        if (currentTile(safe).mark !== "flag") {
+          this.handleFlag(currentTile(safe));
+        }
+        this.mode = "disable";
+        this.handleTileInteraction(currentTile(safe));
+      },
+      triggerDefeat: () => {
+        this.failed = false;
+        this.player = { ...this.player, hp: 0, actionState: "dead" };
+        this.commitDeath();
+      },
+      recoverLatestDeathCache: () => {
+        this.failed = false;
+        this.tryRecoverAtCurrentPosition();
+      },
+      toggleRun: () => {
+        this.running = !this.running;
+      },
       snapshot: () => ({
         usedCapacity: getUsedCapacity(this.inventory),
         cleared: this.cleared,
         message: this.message,
         facing: this.facing,
+        stamina: this.player.stamina,
+        toolDurability: this.toolCondition.currentDurability,
+        adjacentAtPlayer:
+          getTile(this.field, this.player.x, this.player.y)
+            ?.adjacentMineCount ?? 0,
+        deathCacheCount: this.deathCaches.length,
+        locomotion: this.running ? "run" : "walk",
+        generatedStartSafe: this.generatedStartSafe,
       }),
     };
   }
@@ -751,6 +932,16 @@ export class ExplorationScene extends Phaser.Scene {
       ),
     );
     this.hudObjects.push(
+      this.add
+        .text(
+          205,
+          54,
+          `道具 ${this.toolCondition.currentDurability}/${this.toolCondition.maxDurability} ${this.running ? "走" : "歩"}`,
+          { fontSize: "11px", color: COLORS.muted },
+        )
+        .setOrigin(0.5),
+    );
+    this.hudObjects.push(
       addHudBar(
         this,
         86,
@@ -817,6 +1008,7 @@ export class ExplorationScene extends Phaser.Scene {
   private drawActions(): void {
     const actions: readonly [ActionMode, string, string][] = [
       ["mine", "採掘", "-"],
+      ["mark", "危険", "-"],
       ["cool", "冷却", String(this.inventory.coolants)],
       ["disable", "解除", String(this.inventory.disablers)],
       ["potion", "回復", String(this.inventory.potions)],
@@ -827,14 +1019,16 @@ export class ExplorationScene extends Phaser.Scene {
       ],
     ];
     const positions = [
-      { x: 174, y: 744 },
-      { x: 236, y: 744 },
-      { x: 298, y: 744 },
-      { x: 205, y: 804 },
-      { x: 267, y: 804 },
+      { x: 176, y: 721 },
+      { x: 250, y: 721 },
+      { x: 324, y: 721 },
+      { x: 176, y: 799 },
+      { x: 250, y: 799 },
+      { x: 324, y: 799 },
     ] as const;
     const actionIcons: Readonly<Record<ActionMode, GameIcon>> = {
       mine: "pickaxe",
+      mark: "disable",
       cool: "coolant",
       disable: "disable",
       potion: "potion",
@@ -847,8 +1041,8 @@ export class ExplorationScene extends Phaser.Scene {
           this,
           position.x,
           position.y,
-          56,
-          52,
+          68,
+          68,
           `${label}\n${count}`,
           () => {
             this.mode = mode;
@@ -870,6 +1064,26 @@ export class ExplorationScene extends Phaser.Scene {
         ),
       );
     });
+    this.hudObjects.push(
+      addGameButton(
+        this,
+        360,
+        650,
+        52,
+        52,
+        this.running ? "走行" : "歩行",
+        () => {
+          this.running = !this.running;
+          this.message = this.running ? "走行モード" : "歩行モード";
+          this.render();
+        },
+        {
+          state: this.running ? "selected" : "normal",
+          icon: "play",
+          fontSize: 11,
+        },
+      ),
+    );
     this.drawJoystick();
   }
 
@@ -922,6 +1136,7 @@ export class ExplorationScene extends Phaser.Scene {
       this.queuedDirection = undefined;
       this.joystickKnob?.setPosition(JOYSTICK_X, JOYSTICK_Y);
       this.joystickArrow?.setAlpha(0).setPosition(JOYSTICK_X, JOYSTICK_Y);
+      this.stopContinuousMovement();
       return;
     }
     const scale = Math.min(distance, JOYSTICK_RADIUS - 8) / distance;
@@ -937,10 +1152,6 @@ export class ExplorationScene extends Phaser.Scene {
       Phaser.Math.RadToDeg(Math.atan2(dy, dx)),
     );
     this.heldDirection = direction;
-    if (this.moving) {
-      this.queuedDirection = direction;
-      return;
-    }
     this.startDirectionalMove(direction);
   }
 
@@ -953,9 +1164,7 @@ export class ExplorationScene extends Phaser.Scene {
     this.queuedDirection = undefined;
     this.joystickKnob?.setPosition(JOYSTICK_X, JOYSTICK_Y);
     this.joystickArrow?.setAlpha(0).setPosition(JOYSTICK_X, JOYSTICK_Y);
-    if (!this.moving) {
-      this.render();
-    }
+    this.stopContinuousMovement();
   };
 
   private startDirectionalMove(direction: MoveDirection): void {
@@ -963,20 +1172,7 @@ export class ExplorationScene extends Phaser.Scene {
       return;
     }
     this.facing = facingFromMoveDirection(direction);
-    if (this.moving) {
-      this.queuedDirection = direction;
-      return;
-    }
-    const vector = MOVE_VECTORS[direction];
-    const tile = getTile(
-      this.field,
-      this.player.x + vector.x,
-      this.player.y + vector.y,
-    );
-    if (!tile) {
-      return;
-    }
-    this.startMoveTo(tile, direction);
+    this.heldDirection = direction;
   }
 
   private startMoveTo(tile: Tile, direction?: MoveDirection): void {
@@ -996,14 +1192,17 @@ export class ExplorationScene extends Phaser.Scene {
     this.player = { ...next, depth: Math.max(next.depth, tile.y) };
     this.message = "移動しました";
     this.moving = true;
+    this.tapMoveInProgress = true;
     const diagonal = previous.x !== next.x && previous.y !== next.y;
     const duration = diagonal
       ? Math.round(MOVE_DURATION * Math.SQRT2)
       : MOVE_DURATION;
-    const targetX = BOARD_X + next.x * TILE_SIZE + TILE_SIZE / 2;
-    const targetY = BOARD_Y + next.y * TILE_SIZE + TILE_SIZE / 2;
+    const targetPosition = { x: next.x + 0.5, y: next.y + 0.5 };
+    const targetX = BOARD_X + targetPosition.x * TILE_SIZE;
+    const targetY = BOARD_Y + targetPosition.y * TILE_SIZE;
     if (!this.playerSprite) {
       this.moving = false;
+      this.tapMoveInProgress = false;
       this.render();
       return;
     }
@@ -1013,14 +1212,19 @@ export class ExplorationScene extends Phaser.Scene {
       y: targetY,
       duration,
       ease: "Linear",
+      onUpdate: () => {
+        if (!this.playerSprite) return;
+        this.playerPosition = {
+          x: this.playerSprite.x / TILE_SIZE,
+          y: this.playerSprite.y / TILE_SIZE,
+        };
+      },
       onComplete: () => {
         this.moving = false;
-        const nextDirection = this.queuedDirection ?? this.heldDirection;
-        this.queuedDirection = undefined;
-        if (nextDirection && this.heldDirection) {
-          this.startDirectionalMove(nextDirection);
-          return;
-        }
+        this.tapMoveInProgress = false;
+        this.playerPosition = targetPosition;
+        this.saveRunState();
+        this.tryRecoverAtCurrentPosition();
         this.render();
       },
     });
@@ -1041,7 +1245,19 @@ export class ExplorationScene extends Phaser.Scene {
   private shutdownInput(): void {
     this.input.off("pointermove", this.handleJoystickMove, this);
     this.input.off("pointerup", this.releaseJoystick, this);
+    this.input.keyboard?.off("keydown", this.handleKeyboardDown);
+    this.input.keyboard?.off("keyup", this.handleKeyboardUp);
+    this.pressedKeys.clear();
     this.worldCamera.stopFollow();
+  }
+
+  private stopContinuousMovement(): void {
+    if (!this.moving || this.tapMoveInProgress) {
+      return;
+    }
+    this.moving = false;
+    this.player = { ...this.player, actionState: "idle" };
+    this.render();
   }
 
   private saveRunState(): void {
@@ -1049,10 +1265,14 @@ export class ExplorationScene extends Phaser.Scene {
       areaId: getSelectedAreaId(),
       field: this.field,
       player: this.player,
+      playerPosition: this.playerPosition,
       inventory: this.inventory,
       monsters: this.monsters,
       defeatedMonsters: this.defeatedMonsters,
       bossDefeated: this.bossDefeated,
+      difficultyId: getGameState().selectedDifficulty,
+      tools: [this.toolCondition],
+      deathCaches: this.deathCaches,
     });
   }
 
@@ -1067,21 +1287,50 @@ export class ExplorationScene extends Phaser.Scene {
       this.render();
       return;
     }
+    if (this.mode === "mark") {
+      this.handleFlag(tile);
+      this.mode = "mine";
+      return;
+    }
     if (this.mode === "cool") {
+      if (!this.canUseDisposalTool()) return;
+      this.player = { ...this.player, stamina: this.player.stamina - 2 };
       const result = coolMine(this.field, this.inventory, tile);
       this.field = result.field;
       this.inventory = result.inventory;
       this.message = result.message;
-      if (result.success) this.feedback("cool", tile, 0x66ccff);
+      if (result.success) {
+        this.toolCondition = {
+          ...this.toolCondition,
+          currentDurability: Math.max(
+            0,
+            this.toolCondition.currentDurability - 1,
+          ),
+        };
+        this.feedback("cool", tile, 0x66ccff);
+      }
+      if (result.success) this.mode = "mine";
       this.render();
       return;
     }
     if (this.mode === "disable") {
+      if (!this.canUseDisposalTool()) return;
+      this.player = { ...this.player, stamina: this.player.stamina - 2 };
       const result = disableMine(this.field, this.inventory, tile);
       this.field = result.field;
       this.inventory = result.inventory;
       this.message = result.message;
-      if (result.success) this.feedback("disable", tile, 0xffd65a);
+      if (result.success) {
+        this.toolCondition = {
+          ...this.toolCondition,
+          currentDurability: Math.max(
+            0,
+            this.toolCondition.currentDurability - 1,
+          ),
+        };
+        this.feedback("disable", tile, 0xffd65a);
+      }
+      if (result.success) this.mode = "mine";
       this.render();
       return;
     }
@@ -1090,6 +1339,9 @@ export class ExplorationScene extends Phaser.Scene {
       return;
     }
     if (tile.state === "exit") {
+      this.player = { ...this.player, x: tile.x, y: tile.y };
+      this.playerPosition = { x: tile.x + 0.5, y: tile.y + 0.5 };
+      this.claimExitCheckpoint();
       this.cleared = true;
       this.message = "出口に到達しました";
       this.render();
@@ -1116,7 +1368,7 @@ export class ExplorationScene extends Phaser.Scene {
       tile,
       result.exploded ? 0xff5533 : 0xf3bb55,
     );
-    if (this.player.hp <= 0) this.failed = true;
+    if (this.player.hp <= 0) this.commitDeath();
     this.render();
   }
 
@@ -1188,11 +1440,191 @@ export class ExplorationScene extends Phaser.Scene {
         ),
       };
       if (this.player.hp <= 0) {
-        this.failed = true;
+        this.commitDeath();
         this.message = "探索失敗...";
       }
     }
     return true;
+  }
+
+  private canUseDisposalTool(): boolean {
+    if (this.toolCondition.currentDurability <= 0) {
+      this.message = "処理道具が壊れています";
+      this.render();
+      return false;
+    }
+    if (this.player.stamina < 2) {
+      this.message = "スタミナが足りません";
+      this.render();
+      return false;
+    }
+    return true;
+  }
+
+  private claimExitCheckpoint(): void {
+    this.saveRunState();
+    const exploration = loadExplorationState();
+    if (!exploration || typeof localStorage === "undefined") return;
+    const checkpoint = exploration.checkpoints[0];
+    if (!checkpoint) return;
+    const eligible = {
+      ...checkpoint,
+      status: "eligible" as const,
+      progress: Object.fromEntries(
+        checkpoint.objectives.map((objective) => [
+          objective.id,
+          objective.required,
+        ]),
+      ),
+    };
+    const ready = {
+      ...exploration,
+      checkpoints: [eligible],
+      dungeon: {
+        ...exploration.dungeon,
+        checkpoints: [eligible],
+      },
+    };
+    const coordinator = new ExplorationCoordinator(ready, {
+      persistent: this.getPersistentStateWithTool(),
+      storage: localStorage,
+    });
+    const result = coordinator.dispatch({
+      type: "claimCheckpoint",
+      checkpointId: eligible.id,
+    });
+    const saved = result.accepted ? loadGame() : undefined;
+    if (saved) setGameState(saved);
+  }
+
+  private commitDeath(): void {
+    if (this.failed) return;
+    this.saveRunState();
+    const exploration = loadExplorationState();
+    if (exploration && typeof localStorage !== "undefined") {
+      const coordinator = new ExplorationCoordinator(exploration, {
+        persistent: this.getPersistentStateWithTool(),
+        storage: localStorage,
+      });
+      const result = coordinator.commitDeath(new Date().toISOString());
+      if (result.accepted) {
+        this.deathCaches = [...result.state.deathCaches];
+        this.player = {
+          ...this.player,
+          x: result.state.player.gridPosition.x,
+          y: result.state.player.gridPosition.y,
+          hp: result.state.player.hp,
+          stamina: result.state.player.stamina,
+          actionState: "idle",
+        };
+        this.playerPosition = result.state.player.position;
+        this.inventory = {
+          ...this.inventory,
+          items: result.state.inventory.items as InventoryState["items"],
+        };
+        const saved = loadGame();
+        if (saved) setGameState(saved);
+      }
+    }
+    this.failed = true;
+  }
+
+  private tryRecoverAtCurrentPosition(): void {
+    const cache = this.deathCaches.find(
+      (candidate) =>
+        candidate.position.x === this.player.x &&
+        candidate.position.y === this.player.y,
+    );
+    if (!cache || typeof localStorage === "undefined") return;
+    const exploration = loadExplorationState();
+    if (!exploration) return;
+    const coordinator = new ExplorationCoordinator(exploration, {
+      persistent: this.getPersistentStateWithTool(),
+      storage: localStorage,
+    });
+    const result = coordinator.dispatch({
+      type: "recoverDeathCache",
+      cacheId: cache.id,
+    });
+    if (!result.accepted) {
+      this.message = result.reason ?? "落とし物を回収できません";
+      return;
+    }
+    this.deathCaches = [...result.state.deathCaches];
+    this.inventory = {
+      ...this.inventory,
+      items: result.state.inventory.items as InventoryState["items"],
+    };
+    const saved = loadGame();
+    if (saved) setGameState(saved);
+    this.message = "落とし物を全て回収しました";
+  }
+
+  private getPersistentStateWithTool(): ReturnType<typeof getGameState> {
+    const state = getGameState();
+    return {
+      ...state,
+      toolConditions: {
+        ...state.toolConditions,
+        [this.toolCondition.equipmentId]: this.toolCondition,
+      },
+    };
+  }
+
+  private checkGeneratedStartSafety(): boolean {
+    const radius = DIFFICULTIES[getGameState().selectedDifficulty].safeRadius;
+    return this.field.tiles
+      .filter(
+        (tile) =>
+          Math.max(
+            Math.abs(tile.x - this.player.x),
+            Math.abs(tile.y - this.player.y),
+          ) <= radius,
+      )
+      .every((tile) => !tile.hasMine);
+  }
+
+  private readonly handleKeyboardDown = (event: KeyboardEvent): void => {
+    const profile = getGameState().controlScheme;
+    this.pressedKeys.add(event.code);
+    if (event.code === profile.keyBindings.run) {
+      this.running = profile.runBehavior === "toggle" ? !this.running : true;
+    }
+    if (event.code === (profile.keyBindings.mark ?? "KeyF")) {
+      this.mode = "mark";
+      this.message = "危険マークモード";
+    }
+    this.updateKeyboardDirection();
+  };
+
+  private readonly handleKeyboardUp = (event: KeyboardEvent): void => {
+    const profile = getGameState().controlScheme;
+    this.pressedKeys.delete(event.code);
+    if (
+      event.code === profile.keyBindings.run &&
+      profile.runBehavior === "hold"
+    ) {
+      this.running = false;
+    }
+    this.updateKeyboardDirection();
+  };
+
+  /** 設定されたキーの同時押しを8方向入力へ正規化する。 */
+  private updateKeyboardDirection(): void {
+    const bindings = getGameState().controlScheme.keyBindings;
+    const x =
+      (this.pressedKeys.has(bindings.right) ? 1 : 0) -
+      (this.pressedKeys.has(bindings.left) ? 1 : 0);
+    const y =
+      (this.pressedKeys.has(bindings.down) ? 1 : 0) -
+      (this.pressedKeys.has(bindings.up) ? 1 : 0);
+    if (x === 0 && y === 0) {
+      if (this.joystickPointerId === undefined) this.heldDirection = undefined;
+      return;
+    }
+    this.startDirectionalMove(
+      directionFromAngle(Phaser.Math.RadToDeg(Math.atan2(y, x))),
+    );
   }
 
   private isMonsterDiscovered(monster: MonsterRuntime): boolean {
