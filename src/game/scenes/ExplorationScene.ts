@@ -12,6 +12,15 @@ import { DIFFICULTIES } from "../../data/difficulties";
 import { getItemName } from "../../data/items";
 import { getMonster, type MonsterId } from "../../data/monsters";
 import {
+  advanceTutorialStep,
+  hideGameUi,
+  publishGameUiState,
+  subscribeUiIntent,
+  type ExplorationAction,
+  type TutorialStep,
+  type UiIntent,
+} from "../../ui/gameUi";
+import {
   clearRun,
   loadExplorationState,
   loadRun,
@@ -71,9 +80,6 @@ import {
 } from "../visual/VisualSystem";
 import {
   addButton,
-  addGameButton,
-  addHudBar,
-  addIconButton,
   COLORS,
   drawGameIcon,
   drawPixelMiner,
@@ -81,7 +87,7 @@ import {
   type GameIcon,
 } from "./uiHelpers";
 
-type ActionMode = "mine" | "mark" | "cool" | "disable" | "potion" | "bag";
+type ActionMode = ExplorationAction;
 
 interface MonsterRuntime {
   readonly id: MonsterId;
@@ -155,6 +161,8 @@ export class ExplorationScene extends Phaser.Scene {
     x: number;
     y: number;
   };
+  private playerImage?: Phaser.GameObjects.Image;
+  private playerOutlineImage?: Phaser.GameObjects.Image;
   private playerPosition!: ContinuousPosition;
   private playerLighting: Phaser.GameObjects.Arc[] = [];
   private facing: FacingDirection = "down";
@@ -173,11 +181,13 @@ export class ExplorationScene extends Phaser.Scene {
   private readonly tileObjects: Phaser.GameObjects.GameObject[] = [];
   private readonly hudObjects: Phaser.GameObjects.GameObject[] = [];
   private readonly flagIcons = new Map<string, Phaser.GameObjects.Container>();
-  private messageText?: Phaser.GameObjects.Text;
   private readonly discoveredMonsterKeys = new Set<string>();
   private movementAccumulatorMs = 0;
   private inputReceiptSequence = 0;
   private activeChunkKey = "";
+  private objectiveExpanded = false;
+  private tutorialStep: TutorialStep = "complete";
+  private unsubscribeUiIntent?: () => void;
   private readonly performanceMonitor = new PerformanceMonitor();
 
   constructor() {
@@ -208,6 +218,7 @@ export class ExplorationScene extends Phaser.Scene {
       this.monsters = this.createMonsters();
     }
     const save = getGameState();
+    this.tutorialStep = save.settings.tutorialSeen ? "complete" : "move";
     const pickaxeId = save.equipment.equipped.pickaxe;
     this.toolCondition = resumed?.exploration.tools[0] ??
       save.toolConditions[pickaxeId] ?? {
@@ -232,6 +243,7 @@ export class ExplorationScene extends Phaser.Scene {
     this.input.keyboard?.on("keydown", this.handleKeyboardDown);
     this.input.keyboard?.on("keyup", this.handleKeyboardUp);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.shutdownInput, this);
+    this.unsubscribeUiIntent = subscribeUiIntent(this.handleUiIntent);
     this.render();
     this.saveRunState(true);
   }
@@ -400,9 +412,8 @@ export class ExplorationScene extends Phaser.Scene {
     this.drawLighting();
     this.drawPlayer();
     this.drawMonsters();
-    this.drawHud();
-    this.drawMessage();
-    this.drawActions();
+    this.drawJoystick();
+    this.publishExplorationUi();
     this.worldCamera.ignore(this.hudObjects);
     this.uiCamera.ignore(this.tileObjects);
     if (!this.cleared && !this.failed) {
@@ -731,6 +742,8 @@ export class ExplorationScene extends Phaser.Scene {
       const image = this.add
         .image(0, 0, ASSET_KEYS.player)
         .setDisplaySize(58, 58);
+      this.playerImage = image;
+      this.playerOutlineImage = outline;
       const flipX = this.facing.includes("Left") || this.facing === "left";
       outline.setFlipX(flipX);
       image.setFlipX(flipX);
@@ -1000,175 +1013,88 @@ export class ExplorationScene extends Phaser.Scene {
     }
   }
 
-  private drawHud(): void {
+  private readonly handleUiIntent = (intent: UiIntent): void => {
+    if (!this.scene.isActive() || this.failed || this.cleared) return;
+    if (intent.type === "selectExplorationAction") {
+      this.mode = intent.action;
+      if (intent.action === "potion") {
+        this.usePotion();
+        return;
+      }
+      this.message =
+        intent.action === "bag"
+          ? `バッグ ${getUsedCapacity(this.inventory)}/${this.inventory.capacity}`
+          : `${getActionLabel(intent.action)}を選択。隣接する対象をタップ`;
+      this.publishExplorationUi();
+      return;
+    }
+    if (intent.type === "toggleRun") {
+      this.running = !this.running;
+      this.message = this.running
+        ? "走行中：移動でスタミナを消費"
+        : "歩行中：スタミナを温存";
+      this.publishExplorationUi();
+      return;
+    }
+    if (intent.type === "toggleObjective") {
+      this.objectiveExpanded = !this.objectiveExpanded;
+      this.publishExplorationUi();
+      return;
+    }
+    if (intent.type === "dismissTutorial") {
+      this.completeTutorial();
+      this.publishExplorationUi();
+      return;
+    }
+    hideGameUi();
+    this.openMenu();
+  };
+
+  private publishExplorationUi(): void {
     const area = getArea(getSelectedAreaId());
-    this.hudObjects.push(
-      addHudBar(
-        this,
-        86,
-        22,
-        142,
-        this.player.hp,
-        this.player.maxHp,
-        COLORS.red,
-        "HP",
-      ),
-    );
-    this.hudObjects.push(
-      this.add
-        .text(
-          205,
-          54,
-          `道具 ${this.toolCondition.currentDurability}/${this.toolCondition.maxDurability} ${this.running ? "走" : "歩"}`,
-          { fontSize: "11px", color: COLORS.muted },
-        )
-        .setOrigin(0.5),
-    );
-    this.hudObjects.push(
-      addHudBar(
-        this,
-        86,
-        48,
-        142,
-        this.player.stamina,
-        this.player.maxStamina,
-        COLORS.green,
-        "ST",
-      ),
-    );
-    this.hudObjects.push(
-      this.add
-        .text(205, 26, `${this.player.coins}C`, {
-          fontSize: "15px",
-          color: COLORS.text,
-        })
-        .setOrigin(0.5),
-    );
-    this.hudObjects.push(
-      this.add
-        .text(
-          288,
-          26,
-          `袋 ${getUsedCapacity(this.inventory)}/${this.inventory.capacity}`,
-          { fontSize: "15px", color: COLORS.text },
-        )
-        .setOrigin(0.5),
-    );
-    this.hudObjects.push(
-      this.add
-        .text(335, 58, `${area.name}\n${this.player.depth}m`, {
-          fontSize: "12px",
-          color: COLORS.text,
-          align: "center",
-        })
-        .setOrigin(0.5),
-    );
-    this.hudObjects.push(
-      drawGameIcon(this, 178, 26, "coin", VISUAL_TOKENS.colors.coin).setScale(
-        0.7,
-      ),
-      drawGameIcon(this, 247, 26, "bag", 0xfff3d6).setScale(0.7),
-      drawGameIcon(this, 305, 58, "depth", 0xd3b98b).setScale(0.7),
-      addIconButton(this, 360, 104, "settings", () => this.openMenu()),
-    );
-  }
-
-  private drawMessage(): void {
-    const box = this.add
-      .rectangle(195, 652, 298, 54, 0x14100b, 0.92)
-      .setStrokeStyle(2, COLORS.goldDark);
-    const text = this.add
-      .text(195, 652, this.message, {
-        fontSize: "15px",
-        color: COLORS.text,
-        align: "center",
-        wordWrap: { width: 270 },
-      })
-      .setOrigin(0.5);
-    this.messageText = text;
-    this.hudObjects.push(box, text);
-  }
-
-  private drawActions(): void {
-    const actions: readonly [ActionMode, string, string][] = [
-      ["mine", "採掘", "-"],
-      ["mark", "危険", "-"],
-      ["cool", "冷却", String(this.inventory.coolants)],
-      ["disable", "解除", String(this.inventory.disablers)],
-      ["potion", "回復", String(this.inventory.potions)],
-      [
-        "bag",
-        "バッグ",
-        `${getUsedCapacity(this.inventory)}/${this.inventory.capacity}`,
-      ],
-    ];
-    const positions = [
-      { x: 176, y: 721 },
-      { x: 250, y: 721 },
-      { x: 324, y: 721 },
-      { x: 176, y: 799 },
-      { x: 250, y: 799 },
-      { x: 324, y: 799 },
-    ] as const;
-    const actionIcons: Readonly<Record<ActionMode, GameIcon>> = {
-      mine: "pickaxe",
-      mark: "disable",
-      cool: "coolant",
-      disable: "disable",
-      potion: "potion",
-      bag: "bag",
-    };
-    actions.forEach(([mode, label, count], index) => {
-      const position = positions[index];
-      this.hudObjects.push(
-        addGameButton(
-          this,
-          position.x,
-          position.y,
-          68,
-          68,
-          `${label}\n${count}`,
-          () => {
-            this.mode = mode;
-            if (mode === "potion") {
-              this.usePotion();
-              return;
-            }
-            this.message =
-              mode === "bag"
-                ? `バッグ ${getUsedCapacity(this.inventory)}/${this.inventory.capacity}`
-                : `${label}モード`;
-            this.render();
-          },
-          {
-            state: this.mode === mode ? "selected" : "normal",
-            icon: actionIcons[mode],
-            fontSize: 12,
-          },
-        ),
-      );
+    publishGameUiState({
+      screen: "exploration",
+      exploration: {
+        areaName: area.name,
+        depth: this.player.depth,
+        maximumDepth: area.maxDepth,
+        hp: { current: this.player.hp, maximum: this.player.maxHp },
+        stamina: {
+          current: this.player.stamina,
+          maximum: this.player.maxStamina,
+        },
+        coins: this.player.coins,
+        bagUsed: getUsedCapacity(this.inventory),
+        bagCapacity: this.inventory.capacity,
+        toolDurability: this.toolCondition.currentDurability,
+        toolMaximumDurability: this.toolCondition.maxDurability,
+        selectedAction: this.mode,
+        running: this.running,
+        message: this.message,
+        objectiveExpanded: this.objectiveExpanded,
+        tutorialStep: this.tutorialStep,
+        coolants: this.inventory.coolants,
+        disablers: this.inventory.disablers,
+        potions: this.inventory.potions,
+      },
     });
-    this.hudObjects.push(
-      addGameButton(
-        this,
-        360,
-        650,
-        52,
-        52,
-        this.running ? "走行" : "歩行",
-        () => {
-          this.running = !this.running;
-          this.message = this.running ? "走行モード" : "歩行モード";
-          this.render();
-        },
-        {
-          state: this.running ? "selected" : "normal",
-          icon: "play",
-          fontSize: 11,
-        },
-      ),
-    );
-    this.drawJoystick();
+  }
+
+  private advanceTutorial(completed: Exclude<TutorialStep, "complete">): void {
+    this.tutorialStep = advanceTutorialStep(this.tutorialStep, completed);
+    if (this.tutorialStep === "complete") {
+      this.completeTutorial();
+    }
+  }
+
+  private completeTutorial(): void {
+    this.tutorialStep = "complete";
+    const state = getGameState();
+    if (state.settings.tutorialSeen) return;
+    setGameState({
+      ...state,
+      settings: { ...state.settings, tutorialSeen: true },
+    });
   }
 
   private drawJoystick(): void {
@@ -1298,6 +1224,14 @@ export class ExplorationScene extends Phaser.Scene {
       ease: "Linear",
       onUpdate: () => {
         if (!this.playerSprite) return;
+        const frameKey =
+          ASSET_KEYS.playerWalk[
+            Math.floor(this.time.now / 90) % ASSET_KEYS.playerWalk.length
+          ];
+        if (this.textures.exists(frameKey)) {
+          this.playerImage?.setTexture(frameKey);
+          this.playerOutlineImage?.setTexture(frameKey);
+        }
         this.playerPosition = {
           x: this.playerSprite.x / TILE_SIZE,
           y: this.playerSprite.y / TILE_SIZE,
@@ -1307,6 +1241,7 @@ export class ExplorationScene extends Phaser.Scene {
         this.moving = false;
         this.tapMoveInProgress = false;
         this.playerPosition = targetPosition;
+        this.advanceTutorial("move");
         this.saveRunState();
         this.tryRecoverAtCurrentPosition();
         this.render();
@@ -1334,6 +1269,9 @@ export class ExplorationScene extends Phaser.Scene {
     this.input.keyboard?.off("keyup", this.handleKeyboardUp);
     this.pressedKeys.clear();
     this.worldCamera.stopFollow();
+    this.unsubscribeUiIntent?.();
+    this.unsubscribeUiIntent = undefined;
+    hideGameUi();
     void saveCoordinator.flushAll("sceneShutdown");
   }
 
@@ -1430,6 +1368,7 @@ export class ExplorationScene extends Phaser.Scene {
           ),
         };
         this.feedback("cool", tile, 0x66ccff);
+        this.advanceTutorial("treat");
       }
       if (result.success) this.mode = "mine";
       this.render();
@@ -1451,6 +1390,7 @@ export class ExplorationScene extends Phaser.Scene {
           ),
         };
         this.feedback("disable", tile, 0xffd65a);
+        this.advanceTutorial("treat");
       }
       if (result.success) this.mode = "mine";
       this.render();
@@ -1490,6 +1430,9 @@ export class ExplorationScene extends Phaser.Scene {
       tile,
       result.exploded ? 0xff5533 : 0xf3bb55,
     );
+    if (!result.exploded) {
+      this.advanceTutorial("read");
+    }
     if (this.player.hp <= 0) this.commitDeath();
     this.render();
   }
@@ -1506,6 +1449,9 @@ export class ExplorationScene extends Phaser.Scene {
     const key = `${tile.x},${tile.y}`;
     const existing = this.flagIcons.get(key);
     const current = getTile(this.field, tile.x, tile.y);
+    if (current?.mark === "flag") {
+      this.advanceTutorial("mark");
+    }
     if (existing) {
       existing.setVisible(current?.mark === "flag");
     } else if (current?.mark === "flag" && this.isTileInActiveWindow(current)) {
@@ -1520,7 +1466,7 @@ export class ExplorationScene extends Phaser.Scene {
       this.tileObjects.push(icon);
       this.uiCamera.ignore(icon);
     }
-    this.messageText?.setText(this.message);
+    this.publishExplorationUi();
     this.saveRunState();
   }
 
@@ -1845,7 +1791,6 @@ export class ExplorationScene extends Phaser.Scene {
     this.queuedDirection = undefined;
     this.joystickPointerId = undefined;
     this.clearObjects(this.hudObjects);
-    this.drawHud();
     const overlay = this.add.rectangle(195, 422, 390, 844, 0x000000, 0.58);
     const panel = this.add
       .rectangle(195, 420, 270, 360, COLORS.panel, 0.98)
@@ -1934,4 +1879,16 @@ function lightenColor(color: number, amount: number): number {
   const green = Math.min(255, ((color >> 8) & 0xff) + amount);
   const blue = Math.min(255, (color & 0xff) + amount);
   return (red << 16) | (green << 8) | blue;
+}
+
+function getActionLabel(action: ExplorationAction): string {
+  const labels: Readonly<Record<ExplorationAction, string>> = {
+    mine: "採掘",
+    mark: "危険マーク",
+    cool: "冷却",
+    disable: "解除",
+    potion: "回復",
+    bag: "バッグ",
+  };
+  return labels[action];
 }

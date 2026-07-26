@@ -63,9 +63,10 @@ export class InventoryScene extends Phaser.Scene {
 
     if (visible.length === 0) {
       this.add
-        .text(195, 350, "バッグは空です", {
+        .text(195, 350, "バッグは空です\n探索で最初の素材を集めよう", {
           fontSize: "20px",
           color: COLORS.text,
+          align: "center",
         })
         .setOrigin(0.5);
     }
@@ -105,7 +106,7 @@ export class InventoryScene extends Phaser.Scene {
       this.page = Math.min(pageCount - 1, this.page + 1);
       this.render();
     });
-    addButton(this, 195, 790, 170, 54, "拠点へ戻る", () =>
+    addButton(this, 195, 790, 230, 54, "整理を終えて拠点へ", () =>
       this.scene.start("HomeScene"),
     );
   }

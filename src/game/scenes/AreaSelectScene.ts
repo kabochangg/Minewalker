@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import { AREAS, type AreaId } from "../../data/areas";
 import { DIFFICULTIES, type DifficultyId } from "../../data/difficulties";
+import { getItemName } from "../../data/items";
 import {
   getRouteState,
   setRouteState,
@@ -62,11 +63,17 @@ export class AreaSelectScene extends Phaser.Scene {
       this.scene.start("SettingsScene"),
     );
     this.add
-      .text(195, 145, this.message, {
-        fontSize: "13px",
-        color: COLORS.text,
-        fontStyle: "bold",
-      })
+      .text(
+        195,
+        684,
+        `${this.message}\n${formatDifficultySummary(state.selectedDifficulty)}`,
+        {
+          fontSize: "11px",
+          color: COLORS.text,
+          fontStyle: "bold",
+          align: "center",
+        },
+      )
       .setOrigin(0.5);
     addButton(
       this,
@@ -80,7 +87,7 @@ export class AreaSelectScene extends Phaser.Scene {
     );
     if (state.deathCaches.length > 0) {
       this.add
-        .text(195, 140, `回収待ち ${state.deathCaches.length}地点`, {
+        .text(270, 748, `回収待ち ${state.deathCaches.length}地点`, {
           fontSize: "12px",
           color: "#ff8b72",
         })
@@ -111,9 +118,9 @@ export class AreaSelectScene extends Phaser.Scene {
       this.add.text(
         102,
         y + 28,
-        "★".repeat(area.difficulty) + "☆".repeat(5 - area.difficulty),
+        `危険 ${Math.round(area.mineDensity * 100)}% / ${getItemName(area.materialIds[0])}`,
         {
-          fontSize: "16px",
+          fontSize: "11px",
           color: "#f5b83f",
         },
       );
@@ -124,7 +131,7 @@ export class AreaSelectScene extends Phaser.Scene {
         92,
         42,
         unlocked
-          ? `${interrupted?.areaId === area.id ? "再開" : "推奨"}\nLv.${area.recommendedLevel}`
+          ? `${interrupted?.areaId === area.id ? "再開" : "選択"}\nLv.${area.recommendedLevel}`
           : "解放",
         () => this.selectArea(area.id, unlocked),
         unlocked ? COLORS.green : 0x555555,
@@ -192,4 +199,9 @@ export class AreaSelectScene extends Phaser.Scene {
     this.message = result.message;
     this.render();
   }
+}
+
+function formatDifficultySummary(difficultyId: DifficultyId): string {
+  const difficulty = DIFFICULTIES[difficultyId];
+  return `危険 ${Math.round(difficulty.hazardDensity * 100)}%・敵力 x${difficulty.monsterStrengthMultiplier}・報酬 x${difficulty.rewardMultiplier}`;
 }

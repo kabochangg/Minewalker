@@ -4,6 +4,7 @@ import type { MonsterId } from "../../data/monsters";
 import { clearRun } from "../../save/RunSaveSystem";
 import { applyExplorationReward, getGameState } from "../state/GameState";
 import type { InventoryState } from "../systems/InventorySystem";
+import { getNextUnlockHint } from "../systems/ProgressionSystem";
 import { addButton, addPanel, COLORS } from "./uiHelpers";
 
 interface ResultSceneData {
@@ -77,7 +78,10 @@ export class ResultScene extends Phaser.Scene {
       )
       .setOrigin(0.5);
     this.add
-      .text(195, 250, "獲得素材", { fontSize: "18px", color: COLORS.muted })
+      .text(195, 250, success ? "持ち帰る素材" : "今回の回収対象", {
+        fontSize: "18px",
+        color: COLORS.muted,
+      })
       .setOrigin(0.5);
 
     const gained = (
@@ -148,6 +152,21 @@ export class ResultScene extends Phaser.Scene {
         )
         .setOrigin(0.5);
     }
+    this.add
+      .text(
+        195,
+        658,
+        success
+          ? `次の目標: ${getNextUnlockHint(stateAfter)}`
+          : "次の行動: 同じ探索先へ戻り、死亡地点の袋を回収",
+        {
+          fontSize: "13px",
+          color: COLORS.text,
+          align: "center",
+          wordWrap: { width: 300 },
+        },
+      )
+      .setOrigin(0.5);
     addButton(this, 118, 720, 150, 56, "拠点へ", () =>
       this.scene.start("HomeScene"),
     );
@@ -157,7 +176,7 @@ export class ResultScene extends Phaser.Scene {
       720,
       150,
       56,
-      "次の探索",
+      success ? "続けて探索" : "回収へ戻る",
       () => this.scene.start("AreaSelectScene"),
       COLORS.green,
     );

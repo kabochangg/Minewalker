@@ -90,8 +90,6 @@ async function openFreshTitle(
   const canvas = page.locator("canvas");
   await expect(canvas).toBeVisible();
   await waitForActiveScene(page, "TitleScene");
-  await clickGamePoint(page, 195, 548);
-  await page.waitForTimeout(200);
 }
 
 async function waitForActiveScene(
@@ -127,7 +125,7 @@ async function startNewGameFromTitle(
   await clickGamePoint(page, 195, 482);
   await page.waitForTimeout(80);
   await clickGamePoint(page, 268, 500);
-  await page.waitForTimeout(180);
+  await waitForActiveScene(page, "AreaSelectScene");
 }
 
 test("title to exploration smoke flow", async ({ page }) => {
@@ -136,15 +134,14 @@ test("title to exploration smoke flow", async ({ page }) => {
   const canvas = page.locator("canvas");
 
   await startNewGameFromTitle(page);
-  await page.mouse.click(288, 172);
+  await clickGamePoint(page, 288, 172);
   await page.waitForTimeout(200);
-  await page.mouse.click(234, 790);
+  await clickGamePoint(page, 234, 790);
   await page.waitForTimeout(300);
 
   await expect(canvas).toBeVisible();
-  await page.mouse.click(179, 650);
-  await page.mouse.click(43, 772);
-  await page.mouse.click(211, 394);
+  await clickGamePoint(page, 43, 772);
+  await clickGamePoint(page, 211, 394);
   await page.waitForTimeout(200);
 
   const screenshot = await page.screenshot();
@@ -152,6 +149,35 @@ test("title to exploration smoke flow", async ({ page }) => {
   // This only guards against a blank capture; screen-specific layout is
   // exercised by the visual-baseline test below.
   expect(screenshot.length).toBeGreaterThan(1_000);
+});
+
+test("DOM exploration HUD exposes readable actions and 44px touch targets", async ({
+  page,
+}) => {
+  await page.goto("/?e2e=1");
+  await page.waitForFunction(() => "__minewalkerStartExploration" in window);
+  await page.evaluate(() => {
+    (
+      window as typeof window & { __minewalkerStartExploration: () => void }
+    ).__minewalkerStartExploration();
+  });
+  const ui = page.getByRole("region", { name: "探索インターフェース" });
+  await expect(ui).toBeVisible();
+  const actions = ui.getByRole("navigation", { name: "探索アクション" });
+  const buttons = actions.getByRole("button");
+  await expect(buttons).toHaveCount(6);
+  for (const button of await buttons.all()) {
+    const box = await button.boundingBox();
+    expect(box?.width ?? 0).toBeGreaterThanOrEqual(44);
+    expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
+  }
+  const cool = actions.getByRole("button", { name: "冷却 3" });
+  await cool.click();
+  await expect(cool).toHaveAttribute("aria-pressed", "true");
+  const objective = ui.locator(".objective-chip");
+  await objective.click();
+  await expect(objective).toHaveAttribute("aria-expanded", "true");
+  await expect(ui.getByRole("status")).toContainText("冷却");
 });
 
 test("self-hosted Japanese font is ready on every mobile viewport", async ({
@@ -216,13 +242,16 @@ test("performance contract remains stable after 100 exploration actions", async 
 test("in-game menu can return to home", async ({ page }) => {
   await openFreshTitle(page);
   await startNewGameFromTitle(page);
-  await page.mouse.click(288, 172);
-  await page.mouse.click(234, 790);
-  await page.waitForTimeout(300);
+  await clickGamePoint(page, 288, 172);
+  await waitForActiveScene(page, "LoadoutScene");
+  await clickGamePoint(page, 234, 790);
+  await waitForActiveScene(page, "ExplorationScene");
 
-  await page.mouse.click(360, 104);
+  await page
+    .getByRole("button", { name: "探索メニューを開く" })
+    .click();
   await page.waitForTimeout(100);
-  await page.mouse.click(195, 405);
+  await clickGamePoint(page, 195, 405);
   await page.waitForTimeout(200);
 
   await expect(page.locator("canvas")).toBeVisible();
@@ -428,9 +457,9 @@ test("running consumes stamina and reports locomotion in the HUD state", async (
 
 test("settings survive reload smoke flow", async ({ page }) => {
   await openFreshTitle(page);
-  await page.mouse.click(308, 684);
+  await clickGamePoint(page, 308, 684);
   await page.waitForTimeout(100);
-  await page.mouse.click(195, 220);
+  await clickGamePoint(page, 195, 220);
   await page.reload();
   await expect(page.locator("canvas")).toBeVisible();
 });

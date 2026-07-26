@@ -1,4 +1,5 @@
 import Phaser from "phaser";
+import { getArea, type AreaId } from "../../data/areas";
 import type { EquipmentId } from "../../data/equipment";
 import { type UpgradeId } from "../../data/upgrades";
 import {
@@ -140,7 +141,7 @@ export class HomeScene extends Phaser.Scene {
       602,
       230,
       62,
-      "探索へ",
+      `推奨: ${getArea((state.unlockedAreas.at(-1) ?? "area.beginnerMine") as AreaId).name}へ`,
       () => this.scene.start("AreaSelectScene"),
       COLORS.green,
     );

@@ -27,6 +27,17 @@ export class CollectionScene extends Phaser.Scene {
         fontStyle: "bold",
       })
       .setOrigin(0.5);
+    const foundTotal =
+      state.collection.items.length +
+      state.collection.monsters.length +
+      state.collection.equipment.length;
+    const collectionTotal = ITEMS.length + MONSTERS.length + EQUIPMENT.length;
+    this.add
+      .text(195, 116, `発見 ${foundTotal}/${collectionTotal}`, {
+        fontSize: "13px",
+        color: COLORS.muted,
+      })
+      .setOrigin(0.5);
 
     this.addSection("素材", 142, ITEMS.length, state.collection.items.length);
     this.addList(
@@ -64,8 +75,18 @@ export class CollectionScene extends Phaser.Scene {
         .slice(0, 3),
     );
 
-    addButton(this, 195, 760, 160, 56, "戻る", () =>
+    addButton(this, 110, 760, 140, 56, "拠点へ", () =>
       this.scene.start("HomeScene"),
+    );
+    addButton(
+      this,
+      272,
+      760,
+      160,
+      56,
+      "探索で発見",
+      () => this.scene.start("AreaSelectScene"),
+      COLORS.green,
     );
   }
 

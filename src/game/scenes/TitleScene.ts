@@ -93,18 +93,15 @@ export class TitleScene extends Phaser.Scene {
       794,
       150,
       48,
-      "チュートリアル",
+      "実地ガイド",
       () => this.showTutorial(),
       COLORS.panel,
     );
     this.add
       .text(320, 790, "v1.0.0", { fontSize: "14px", color: "#d7a15b" })
       .setOrigin(0.5);
-
-    const state = getGameState();
-    if (!state.settings.tutorialSeen) {
-      this.showTutorial();
-    }
+    // A first launch needs a valid save immediately, but no blocking tutorial.
+    setGameState(getGameState());
   }
 
   private showStartMenu(): void {
@@ -200,47 +197,9 @@ export class TitleScene extends Phaser.Scene {
     const state = getGameState();
     setGameState({
       ...state,
-      settings: { ...state.settings, tutorialSeen: true },
+      settings: { ...state.settings, tutorialSeen: false },
     });
-    const overlay = this.add.rectangle(195, 422, 390, 844, 0x000000, 0.62);
-    const panel = this.add
-      .rectangle(195, 420, 315, 300, COLORS.panel, 0.98)
-      .setStrokeStyle(2, COLORS.goldDark);
-    this.add
-      .text(195, 326, "遊び方", {
-        fontSize: "24px",
-        color: COLORS.text,
-        fontStyle: "bold",
-      })
-      .setOrigin(0.5);
-    this.add
-      .text(
-        195,
-        420,
-        "数字は周囲8マスの地雷数です。\n安全な壁を掘って進み、地雷候補は長押しでマーク。\n地雷は冷却または解除してから壊すと素材になります。",
-        {
-          fontSize: "15px",
-          color: COLORS.text,
-          align: "center",
-          lineSpacing: 8,
-          wordWrap: { width: 260 },
-        },
-      )
-      .setOrigin(0.5);
-    addButton(
-      this,
-      195,
-      548,
-      180,
-      52,
-      "OK",
-      () => {
-        overlay.destroy();
-        panel.destroy();
-        this.scene.restart();
-      },
-      COLORS.green,
-    );
+    this.showStartMenu();
   }
 
   private drawMineBackdrop(): void {

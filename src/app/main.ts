@@ -8,8 +8,14 @@ import type {
   ObjectCountSnapshot,
   PerformanceSnapshot,
 } from "../game/presentation/PerformanceMonitor";
+import { mountGameUi } from "../ui/gameUi";
 
 const game = createGame();
+const uiRoot = document.querySelector<HTMLElement>("#ui-root");
+if (!uiRoot) {
+  throw new Error("Minewalker UI root (#ui-root) was not found");
+}
+mountGameUi(uiRoot);
 const pwaLifecycle = new PwaLifecycleController(
   async () => {
     saveCoordinator.markDirty("persistent", getGameState(), "pwaUpdate");

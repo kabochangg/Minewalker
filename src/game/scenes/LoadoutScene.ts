@@ -84,7 +84,7 @@ export class LoadoutScene extends Phaser.Scene {
         222,
         92,
         92,
-        `${equipment.name}\nT${equipment.tier}`,
+        `${equipment.name}\n${formatEquipmentEffect(equipment)}`,
         () => this.cycleEquipment(equipment.slot),
       );
       const icon: GameIcon = ["pickaxe", "weapon", "armor"][index] as GameIcon;
@@ -119,17 +119,12 @@ export class LoadoutScene extends Phaser.Scene {
     });
 
     this.add
-      .text(
-        195,
-        610,
-        `${this.message}\n長押しでフラグ。下部ボタンで採掘・冷却・解除を切り替えます。`,
-        {
-          fontSize: "14px",
-          color: COLORS.muted,
-          align: "center",
-          wordWrap: { width: 300 },
-        },
-      )
+      .text(195, 610, `${this.message}\n数字を読む → マーク → 冷却・解除`, {
+        fontSize: "14px",
+        color: COLORS.muted,
+        align: "center",
+        wordWrap: { width: 300 },
+      })
       .setOrigin(0.5);
     addButton(this, 88, 790, 120, 52, "戻る", () =>
       this.scene.start("AreaSelectScene"),
@@ -140,7 +135,7 @@ export class LoadoutScene extends Phaser.Scene {
       790,
       190,
       62,
-      "出発",
+      "この装備で出発",
       () => this.scene.start("ExplorationScene"),
       COLORS.green,
     );
@@ -166,4 +161,16 @@ export class LoadoutScene extends Phaser.Scene {
     this.message = equipItem(next.id as EquipmentId).message;
     this.render();
   }
+}
+
+function formatEquipmentEffect(
+  equipment: ReturnType<typeof getEquipment>,
+): string {
+  if (equipment.slot === "pickaxe") {
+    return `採掘 ${equipment.miningPower}`;
+  }
+  if (equipment.slot === "weapon") {
+    return `攻撃 +${equipment.attack}`;
+  }
+  return `防御 +${equipment.defense}`;
 }

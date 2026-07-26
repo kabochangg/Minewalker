@@ -235,7 +235,7 @@ export class SettingsScene extends Phaser.Scene {
         },
       )
       .setOrigin(0.5);
-    addButton(this, 195, 790, 160, 50, "戻る", () =>
+    addButton(this, 195, 790, 240, 50, "設定を保存して拠点へ", () =>
       this.scene.start("HomeScene"),
     );
   }

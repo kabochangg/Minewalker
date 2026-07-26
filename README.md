@@ -53,7 +53,13 @@ Minewalker is a smartphone portrait PWA game built around minesweeper-style dedu
   - Existing player and monster PNGs enhanced with outlines, ground shadows, eight-direction facing, idle/movement motion, reveal effects, and contextual HP bars.
   - Code-drawn title tunnel, home workshop, area thumbnails, inventory/crafting glyphs, collection silhouettes, settings toggles, and result animation.
   - Reduced-motion-aware particles and feedback for mining, cooling, disabling, hits, healing, and item rewards.
-  - Visual baselines for Title, Home, Area Select, Exploration, and Result at 320×844, 390×844, and 430×932.
+  - DOM exploration HUD with semantic resource bars, objective disclosure,
+    live action feedback, and 44px action controls.
+  - Contextual first-run coaching for movement, number reading, marking, and
+    safe hazard treatment; the title no longer opens a mandatory tutorial.
+  - Normalized four-frame player walk animation with stable asset metadata.
+  - Visual baselines for Title, Home, Area Select, Exploration, and Result at
+    320×568, 390×844, and 430×932.
 
 ## Controls
 
@@ -121,5 +127,6 @@ The production project is `minewalker`, connected to the GitHub `main` branch. C
 
 ## Optional Future Enhancements
 
-- Expanded character animation frames and equipment appearance variants.
+- Expanded mining, combat, damage, and victory animation strips plus equipment
+  appearance variants.
 - Area music, longer effect sets, a custom domain, and optional cloud save.

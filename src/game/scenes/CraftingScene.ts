@@ -98,7 +98,7 @@ export class CraftingScene extends Phaser.Scene {
         .setOrigin(0.5);
     });
 
-    addButton(this, 195, 790, 170, 54, "拠点へ戻る", () =>
+    addButton(this, 195, 790, 220, 54, "準備を終えて拠点へ", () =>
       this.scene.start("HomeScene"),
     );
   }

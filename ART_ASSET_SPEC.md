@@ -53,7 +53,8 @@ Minewalkerを実装可能なゲームへ落とし込むため、必要なビジ�
 
 - 基本: 32×32px
 - 高密度版: 64×64px
-- ゲーム内部では32×32px推奨
+- 素材の基準は32×32px、ゲーム内の論理表示は48×48px
+- 拡大時はnearest-neighborを使用する
 
 ### キャラクター
 
@@ -119,6 +120,16 @@ player-miner-death.png
 ```
 
 背景透過PNG。
+
+アニメーション制作:
+
+- 既存の`player-miner.png`を基準フレームとして固定する
+- 状態ごとに全フレームを1本のストリップで生成する
+- 全フレームを64×64px、bottom-centerアンカーへ正規化する
+- ゲームへ組み込む前にプレビューシートと実機サイズで確認する
+- 歩行4フレームは
+  `src/assets/sprites/player-miner-walk/player-miner-walk-01.png`〜`04.png`
+  を正とする
 
 ---
 
@@ -622,3 +633,5 @@ no 3D rendering
 - ファイル名が規約通り
 - スプライトシートのフレームサイズが一定
 - モックだけでなく個別素材が存在する
+- 全アセットは安定キー、frameSize、anchor、purpose、
+  fallbackLabelをアセットカタログへ登録する

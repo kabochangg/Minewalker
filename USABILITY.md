@@ -15,6 +15,20 @@
 - Diagonal movement cannot pass through blocked corners or occupied monster cells.
 - Tapping and long-pressing use the same world tile hit target; long-press toggles a flag.
 - Action buttons remain reachable by the right thumb while the left thumb holds the joystick.
+- The Canvas receives world and joystick input. The fixed DOM layer receives
+  HUD, objective, menu, and action-button input; neither layer may intercept
+  the other's active touch region.
+- Every rejected action announces a concrete Japanese reason through an
+  `aria-live` status within 100ms of command handling.
+
+## First-run learning
+
+- The title is immediately actionable and never opens a mandatory tutorial
+  modal.
+- Contextual coaching advances only after move, number-reading/mining, marking,
+  and safe treatment actions.
+- Coaching can be dismissed without changing balance or blocking progress, and
+  can be restarted from the title.
 
 ## Readability
 
@@ -34,9 +48,13 @@
 6. Settings and permanent save data survive reload.
 7. An interrupted exploration reloads from the separate run save.
 8. The production shell starts while offline after its first online load.
+9. HUD, objective disclosure, and all action controls expose semantic DOM
+   labels and remain operable at 320 × 568.
 
 ## Manual verification
 
 - Test iPhone Safari and Android Chrome in portrait orientation.
 - Confirm safe-area behavior, PWA installation, touch reachability, and 30-minute stability.
 - Check all major screens at 320 × 568, 390 × 844, and 430 × 932.
+- Confirm that no persistent HUD covers the center of the minefield and that
+  the selected action is identifiable without relying on color alone.

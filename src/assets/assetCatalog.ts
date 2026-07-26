@@ -2,6 +2,10 @@ import type { AreaDefinition } from "../data/areas";
 import type { MonsterId } from "../data/monsters";
 
 import playerMinerUrl from "./sprites/player-miner.png";
+import playerMinerWalk01Url from "./sprites/player-miner-walk/player-miner-walk-01.png";
+import playerMinerWalk02Url from "./sprites/player-miner-walk/player-miner-walk-02.png";
+import playerMinerWalk03Url from "./sprites/player-miner-walk/player-miner-walk-03.png";
+import playerMinerWalk04Url from "./sprites/player-miner-walk/player-miner-walk-04.png";
 import ancientGuardianUrl from "./sprites/monster-ancient-guardian.png";
 import batUrl from "./sprites/monster-bat.png";
 import flameSlimeUrl from "./sprites/monster-flame-slime.png";
@@ -32,6 +36,12 @@ import volcanoWallUrl from "./tiles/volcano-mine-wall.png";
 
 export const ASSET_KEYS = {
   player: "sprite.playerMiner",
+  playerWalk: [
+    "sprite.playerMiner.walk.01",
+    "sprite.playerMiner.walk.02",
+    "sprite.playerMiner.walk.03",
+    "sprite.playerMiner.walk.04",
+  ],
   monsters: {
     "monster.slime": "sprite.monster.slime",
     "monster.bat": "sprite.monster.bat",
@@ -80,6 +90,10 @@ export const IMAGE_ASSETS: readonly {
   readonly url: string;
 }[] = [
   { key: ASSET_KEYS.player, url: playerMinerUrl },
+  { key: ASSET_KEYS.playerWalk[0], url: playerMinerWalk01Url },
+  { key: ASSET_KEYS.playerWalk[1], url: playerMinerWalk02Url },
+  { key: ASSET_KEYS.playerWalk[2], url: playerMinerWalk03Url },
+  { key: ASSET_KEYS.playerWalk[3], url: playerMinerWalk04Url },
   { key: ASSET_KEYS.monsters["monster.slime"], url: slimeUrl },
   { key: ASSET_KEYS.monsters["monster.bat"], url: batUrl },
   { key: ASSET_KEYS.monsters["monster.rockGolem"], url: rockGolemUrl },
@@ -110,6 +124,54 @@ export const IMAGE_ASSETS: readonly {
   { key: ASSET_KEYS.tiles.ancientSite.disabledMine, url: ancientDisabledUrl },
   { key: ASSET_KEYS.tiles.ancientSite.exit, url: ancientExitUrl },
 ];
+
+export interface AssetMetadata {
+  readonly kind: "character" | "monster" | "tile";
+  readonly frameSize: readonly [number, number];
+  readonly anchor: "bottomCenter" | "center";
+  readonly purpose: string;
+  readonly fallbackLabel: string;
+}
+
+export function getAssetMetadata(key: string): AssetMetadata {
+  if (
+    key === ASSET_KEYS.player ||
+    ASSET_KEYS.playerWalk.some((candidate) => candidate === key)
+  ) {
+    return {
+      kind: "character",
+      frameSize: [64, 64],
+      anchor: "bottomCenter",
+      purpose: key === ASSET_KEYS.player ? "playerIdle" : "playerWalk",
+      fallbackLabel: "鉱夫",
+    };
+  }
+  if (
+    Object.values(ASSET_KEYS.monsters).some((candidate) => candidate === key)
+  ) {
+    return {
+      kind: "monster",
+      frameSize: [64, 64],
+      anchor: "bottomCenter",
+      purpose: "monster",
+      fallbackLabel: "モンスター",
+    };
+  }
+  if (
+    Object.values(ASSET_KEYS.tiles).some((theme) =>
+      Object.values(theme).some((candidate) => candidate === key),
+    )
+  ) {
+    return {
+      kind: "tile",
+      frameSize: [32, 32],
+      anchor: "center",
+      purpose: "dungeonTile",
+      fallbackLabel: "地形",
+    };
+  }
+  throw new Error(`Unknown asset key: ${key}`);
+}
 
 export function getMonsterAssetKey(id: MonsterId): string {
   return ASSET_KEYS.monsters[id];

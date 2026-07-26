@@ -25,11 +25,11 @@ export default defineConfig({
       },
     },
     {
-      name: "mobile-320x844",
+      name: "mobile-320x568",
       use: {
         ...devices["iPhone SE"],
         browserName: "chromium",
-        viewport: { width: 320, height: 844 },
+        viewport: { width: 320, height: 568 },
       },
     },
     {
